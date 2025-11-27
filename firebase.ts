@@ -3,15 +3,14 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 
-// 1. Paste your Firebase Configuration here
 const firebaseConfig = {
-  apiKey: "AIzaSyCIHtWEFVZWe325j9P_YTfnVJcyFMBGn64",
-  authDomain: "quick-note-app-c2282.firebaseapp.com",
-  projectId: "quick-note-app-c2282",
-  storageBucket: "quick-note-app-c2282.firebasestorage.app",
-  messagingSenderId: "869038299798",
-  appId: "1:869038299798:web:be3609407d7401f1ce00b7",
-  measurementId: "G-MXWXHHM94T"
+  apiKey: import.meta.env.VITE_API_KEY,
+  authDomain: import.meta.env.VITE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_APP_ID,
+  measurementId: import.meta.env.VITE_MEASUREMENT_ID
 };
 
 let app;
