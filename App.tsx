@@ -7,6 +7,8 @@ import NoteCard from './components/NoteCard';
 import ToastContainer from './components/ToastContainer';
 import OnboardingModal from './components/OnboardingModal';
 import SkeletonLoader from './components/SkeletonLoader';
+import LandingPage from './components/LandingPage';
+import LoginModal from './components/LoginModal';
 
 // --- FIREBASE IMPORTS ---
 import { auth, db, googleProvider } from './firebase';
@@ -929,19 +931,28 @@ const App: React.FC = () => {
     });
   };
 
+  // Show a blank screen until Firebase auth state is ready to prevent UI flashing
+  if (!isFirebaseReady) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-bgPage dark:bg-gray-900">
+        {/* This prevents a flash of the landing page for logged-in users */}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col font-sans text-textMain dark:text-gray-100 bg-bgPage transition-colors duration-300">
       <ToastContainer toasts={toasts} onRemove={removeToast} />
       
       {/* Navbar */}
-      <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-primary dark:bg-gray-900/95 backdrop-blur-md shadow-lg py-3' : 'bg-primary dark:bg-gray-900 py-6'}`}>
+      <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled && user ? 'bg-primary dark:bg-gray-900/95 backdrop-blur-md shadow-lg py-3' : 'bg-primary dark:bg-gray-900 py-6'}`}>
         <div className="container mx-auto px-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <img src="/icon.ico" alt="App Icon" className={`rounded-full transition-all duration-300 ${isScrolled ? 'w-8 h-8' : 'w-10 h-10'}`} />
+            <img src="/icon.ico" alt="App Icon" className={`rounded-full transition-all duration-300 ${isScrolled && user ? 'w-8 h-8' : 'w-10 h-10'}`} />
             <div className="flex flex-col text-textOnPrimary dark:text-white">
-              <h1 className={`font-extrabold tracking-tight transition-all duration-300 ${isScrolled ? 'text-xl' : 'text-3xl'}`}>{appName}</h1>
-              <div className={`flex items-center gap-2 transition-all duration-300 ${isScrolled ? 'h-0 opacity-0' : 'h-auto opacity-70'}`}>
-                <span className="text-textOnPrimary dark:text-gray-400 font-light text-sm">{appSubtitle}</span>
+              <h1 className={`font-extrabold tracking-tight transition-all duration-300 ${isScrolled && user ? 'text-xl' : 'text-3xl'}`}>{user ? appName : 'Quick Notes'}</h1>
+              <div className={`flex items-center gap-2 transition-all duration-300 ${isScrolled && user ? 'h-0 opacity-0' : 'h-auto opacity-70'}`}>
+                <span className="text-textOnPrimary dark:text-gray-400 font-light text-sm">{user ? appSubtitle : 'Capture ideas instantly'}</span>
               </div>
             </div>
           </div>
@@ -950,7 +961,7 @@ const App: React.FC = () => {
             {/* User Menu */}
             <div className="relative" ref={menuRef}>
               <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 text-textOnPrimary dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors flex items-center gap-2">
-                 {user?.photoURL ? (
+                 {user ? (
                    <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border-2 border-white/50" />
                  ) : (
                    <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center border-2 border-white/50">
@@ -961,40 +972,40 @@ const App: React.FC = () => {
               
               {isMenuOpen && (
                 <div className="absolute right-0 mt-2 w-56 bg-surface dark:bg-gray-800 rounded-xl shadow-xl py-2 animate-fade-in origin-top-right overflow-hidden z-[60] border border-borderLight dark:border-gray-700">
-                  {user && (
+                  {user ? (
+                    <>
                       <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700">
-                          <div className="font-semibold text-textMain dark:text-white truncate">{user.displayName || 'User'}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</div>
+                        <div className="font-semibold text-textMain dark:text-white truncate">{user.displayName || 'User'}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</div>
                       </div>
-                  )}
-                  {isFirebaseReady && (
+                      <div className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                        {!isOnline ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                            <span>Offline</span>
+                          </>
+                        ) : syncStatus === 'syncing' ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span>
+                            <span>Syncing...</span>
+                          </>
+                        ) : syncStatus === 'error' ? (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                            <span>Sync Error</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                            <span>Synced</span>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  ) : (
                     <div className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                      {!user ? (
-                        <>
-                          <span className="w-2 h-2 rounded-full bg-gray-400"></span>
-                          <span>Local Mode</span>
-                        </>
-                      ) : !isOnline ? (
-                        <>
-                          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                          <span>Offline</span>
-                        </>
-                      ) : syncStatus === 'syncing' ? (
-                        <>
-                          <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span>
-                          <span>Syncing...</span>
-                        </>
-                      ) : syncStatus === 'error' ? (
-                        <>
-                          <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                          <span>Sync Error</span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                          <span>Synced</span>
-                        </>
-                      )}
+                      <span className="w-2 h-2 rounded-full bg-gray-400"></span>
+                      <span>Local Mode</span>
                     </div>
                   )}
                   <button onClick={toggleDarkMode} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
@@ -1010,14 +1021,18 @@ const App: React.FC = () => {
                       </>
                     )}
                   </button>
-                  <button onClick={() => { setShowSettings(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                    Settings
-                  </button>
-                  <button onClick={() => { setShowOnboarding(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
-                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                    Show Demo
-                  </button>
+                  {user && (
+                    <>
+                      <button onClick={() => { setShowSettings(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        Settings
+                      </button>
+                      <button onClick={() => { setShowOnboarding(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Show Demo
+                      </button>
+                    </>
+                  )}
                   <div className="border-t border-borderLight dark:border-gray-700 my-1"></div>
                   {user ? (
                     <button onClick={handleLogout} className="w-full text-left px-4 py-2 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 flex items-center gap-2">
@@ -1037,143 +1052,495 @@ const App: React.FC = () => {
         </div>
       </nav>
 
-      {/* Main Content */}
-      <main className="container mx-auto px-4 pt-32 max-w-3xl flex-1">
-        {isInitialDataLoading ? (
-          <SkeletonLoader />
-        ) : (
-          <>
-            {/* Category Navigation (Sticky) */}
-            <div className={`z-30 flex items-center mb-8 p-1.5 backdrop-blur-md rounded-full border border-borderLight/50 shadow-sm transition-all duration-500 ease-in-out origin-top sticky top-[72px] w-full
-              ${isScrolled 
-                ? "bg-white/90 dark:bg-gray-800/90 shadow-lg border-white/10 dark:border-gray-700" 
-                : "bg-white/50 dark:bg-gray-800/30"
-              }
-            `}>
-              <div className="flex items-center overflow-x-auto hide-scrollbar gap-2 max-w-full px-4 w-full">
-                <button
-                  onClick={() => setCurrentCategory('all')}
-                  className={`rounded-full font-semibold transition-all whitespace-nowrap px-5 py-2 text-sm
-                    ${currentCategory === 'all' 
-                      ? 'bg-primary text-textOnPrimary shadow-md' 
-                      : `text-textMain hover:bg-black/5 dark:text-gray-300 dark:hover:bg-white/5 ${isScrolled ? 'text-gray-600 dark:text-gray-300' : 'text-textMain'}`
-                    }`}
-                >
-                  All
-                </button>
-                <div className={`w-px h-6 mx-2 flex-shrink-0 transition-colors ${isScrolled ? 'bg-gray-300 dark:bg-gray-600' : 'bg-gray-300/50'}`}></div>
-                <div className="flex gap-2 flex-1 overflow-x-auto hide-scrollbar">
-                  {categories.filter(c => c.id !== 'general').map(cat => (
-                    <button
-                      key={cat.id}
-                      onClick={() => setCurrentCategory(cat.id)}
-                      className={`rounded-full font-medium whitespace-nowrap transition-all px-4 py-2 text-sm
-                        ${currentCategory === cat.id 
-                          ? 'bg-primary text-textOnPrimary shadow-md' 
-                          : `text-textMain hover:bg-black/5 dark:text-gray-300 dark:hover:bg-white/5 ${isScrolled ? 'text-gray-600 dark:text-gray-300' : 'text-textMain'}`
-                        }`}
-                    >
-                      {cat.name}
-                    </button>
-                  ))}
-                </div>
-                <button 
-                    id="category-manager-button" onClick={() => setShowCategoryManager(true)}
-                    className="ml-2 p-2 rounded-full shadow-md hover:scale-105 transition-all z-10 shrink-0 bg-white text-textMain hover:bg-gray-50"
+      {user ? (
+        <main className="container mx-auto px-4 pt-32 max-w-3xl flex-1">
+          {isInitialDataLoading ? (
+            <SkeletonLoader />
+          ) : (
+            <>
+              {/* Category Navigation (Sticky) */}
+              <div className={`z-30 flex items-center mb-8 p-1.5 backdrop-blur-md rounded-full border border-borderLight/50 shadow-sm transition-all duration-500 ease-in-out origin-top sticky top-[72px] w-full
+                ${isScrolled 
+                  ? "bg-white/90 dark:bg-gray-800/90 shadow-lg border-white/10 dark:border-gray-700" 
+                  : "bg-white/50 dark:bg-gray-800/30"
+                }
+              `}>
+                <div className="flex items-center overflow-x-auto hide-scrollbar gap-2 max-w-full px-4 w-full">
+                  <button
+                    onClick={() => setCurrentCategory('all')}
+                    className={`rounded-full font-semibold transition-all whitespace-nowrap px-5 py-2 text-sm
+                      ${currentCategory === 'all' 
+                        ? 'bg-primary text-textOnPrimary shadow-md' 
+                        : `text-textMain hover:bg-black/5 dark:text-gray-300 dark:hover:bg-white/5 ${isScrolled ? 'text-gray-600 dark:text-gray-300' : 'text-textMain'}`
+                      }`}
                   >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.532 1.532 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd"/></svg>
-                </button>
+                    All
+                  </button>
+                  <div className={`w-px h-6 mx-2 flex-shrink-0 transition-colors ${isScrolled ? 'bg-gray-300 dark:bg-gray-600' : 'bg-gray-300/50'}`}></div>
+                  <div className="flex gap-2 flex-1 overflow-x-auto hide-scrollbar">
+                    {categories.filter(c => c.id !== 'general').map(cat => (
+                      <button
+                        key={cat.id}
+                        onClick={() => setCurrentCategory(cat.id)}
+                        className={`rounded-full font-medium whitespace-nowrap transition-all px-4 py-2 text-sm
+                          ${currentCategory === cat.id 
+                            ? 'bg-primary text-textOnPrimary shadow-md' 
+                            : `text-textMain hover:bg-black/5 dark:text-gray-300 dark:hover:bg-white/5 ${isScrolled ? 'text-gray-600 dark:text-gray-300' : 'text-textMain'}`
+                          }`}
+                      >
+                        {cat.name}
+                      </button>
+                    ))}
+                  </div>
+                  <button 
+                      id="category-manager-button" onClick={() => setShowCategoryManager(true)}
+                      className="ml-2 p-2 rounded-full shadow-md hover:scale-105 transition-all z-10 shrink-0 bg-white text-textMain hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.532 1.532 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd"/></svg>
+                  </button>
+                </div>
               </div>
-            </div>
 
-            {/* Desktop Input Card */}
-            <div className="hidden md:block bg-surface dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-borderLight dark:border-gray-700 mb-8 animate-slide-up">
-              <div className="flex gap-4 mb-4">
+              {/* Desktop Input Card */}
+              <div className="hidden md:block bg-surface dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-borderLight dark:border-gray-700 mb-8 animate-slide-up">
+                <div className="flex gap-4 mb-4">
+                  <input 
+                    type="text" 
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddNote(inputValue)}
+                  placeholder={`Add a note to ${activeCategoryName}...`}
+                  className="flex-1 p-4 bg-bgPage dark:bg-transparent border-2 border-borderLight dark:border-gray-700 rounded-xl focus:outline-none focus:border-primary dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-800 transition-all text-lg text-textMain dark:text-white placeholder-gray-400 dark:placeholder-gray-500"
+                  />
+                  <button 
+                    onClick={() => handleAddNote(inputValue)}
+                    className="px-8 bg-primary hover:bg-primaryDark text-textOnPrimary font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-95"
+                  >
+                    Add
+                  </button>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Quick:</span>
+                  <div className="flex gap-2 flex-wrap">
+                    {quickActions
+                      .filter(qa => currentCategory === 'all' || qa.categoryId === currentCategory || qa.categoryId === 'general')
+                      .map(qa => (
+                        <button 
+                          key={qa.id}
+                          onClick={() => setInputValue(qa.text)}
+                          className="px-3 py-1 bg-gray-100 dark:bg-gray-700 hover:bg-primary/20 dark:hover:bg-indigo-900/30 hover:text-textMain dark:hover:text-indigo-300 border border-transparent rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 transition-colors"
+                        >
+                          {qa.text}
+                        </button>
+                      ))
+                    }
+                  </div>
+                  <button onClick={() => setShowQAManager(true)} className="ml-auto text-gray-300 hover:text-textMain transition-colors">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Date Filter Bar */}
+              <div className="flex items-center gap-2 mb-6 w-full">
+                {/* Fixed "All Time" Button */}
+                <button
+                   onClick={() => { setFilterMode('all'); setCustomDate(''); }}
+                   className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border capitalize transition-all whitespace-nowrap ${filterMode === 'all' ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}
+                 >
+                   All Time
+                 </button>
+                 
+                 {/* Scrollable Filter Options */}
+                 <div className="flex-1 flex gap-2 overflow-x-auto hide-scrollbar px-1">
+                    {['today', 'yesterday', 'week', 'month'].map(mode => (
+                       <button
+                         key={mode}
+                         onClick={() => { setFilterMode(mode as FilterMode); setCustomDate(''); }}
+                         className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border capitalize transition-all whitespace-nowrap ${filterMode === mode ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}
+                       >
+                         {mode}
+                       </button>
+                    ))}
+                 </div>
+
+                 {/* Fixed Date Picker Icon */}
+                 <div className="shrink-0 relative">
+                    <div className={`p-1.5 rounded-full border transition-all ${filterMode === 'custom' ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    </div>
+                    <input 
+                      type="date" 
+                      value={customDate}
+                      onChange={(e) => { setCustomDate(e.target.value); setFilterMode('custom'); }}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    />
+                 </div>
+              </div>
+
+              {/* Notes Grid */}
+              <div className="animate-fade-in pb-10">
+                {renderNotes()}
+              </div>
+            </>
+          )}
+        </main>
+      ) : (
+        <main className="flex-1 pt-32 container mx-auto px-4 max-w-3xl">
+          <LandingPage onLoginClick={() => setShowLoginModal(true)} />
+        </main>
+      )}
+
+      {/* --- MODALS --- */}
+
+      {/* Login Modal - Must be available even when logged out */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => { setShowLoginModal(false); setAuthEmail(''); setAuthPassword(''); setAuthName(''); }}
+        onGoogleLogin={handleGoogleLogin}
+        onEmailAuth={handleEmailAuth}
+        isSignUp={isSignUp}
+        setIsSignUp={setIsSignUp}
+        authName={authName}
+        setAuthName={setAuthName}
+        authEmail={authEmail}
+        setAuthEmail={setAuthEmail}
+        authPassword={authPassword}
+        setAuthPassword={setAuthPassword}
+        onForgotPassword={handleForgotPassword}
+        authLoading={authLoading}
+      />
+
+      {/* Modals that require a logged-in user */}
+      {user && (
+        <>
+          {/* Onboarding Modal for New Users */}
+          <OnboardingModal 
+            isOpen={showOnboarding}
+            onClose={() => setShowOnboarding(false)}
+          />
+
+          {/* Settings Modal */}
+          <Modal isOpen={showSettings} onClose={() => setShowSettings(false)} title="App Settings">
+            <div className="flex flex-col gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-textMain dark:text-gray-300 mb-2">App Name</label>
                 <input 
                   type="text" 
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddNote(inputValue)}
-                  placeholder={`Add a note to ${activeCategoryName}...`}
-                  className="flex-1 p-4 bg-bgPage dark:bg-gray-900 border-2 border-borderLight dark:border-gray-700 rounded-xl focus:outline-none focus:border-primary dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-800 transition-all text-lg text-textMain dark:text-white placeholder-gray-400"
+                  value={appName}
+                  onChange={(e) => setAppName(e.target.value)}
+                  className="w-full p-3 border border-borderLight dark:border-gray-600 rounded-xl focus:outline-none focus:border-primary text-sm bg-bgPage dark:bg-gray-700 dark:text-white"
+                  placeholder="e.g. Quick Notes"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-textMain dark:text-gray-300 mb-2">App Subtitle</label>
+                <input 
+                  type="text" 
+                  value={appSubtitle}
+                  onChange={(e) => setAppSubtitle(e.target.value)}
+                  className="w-full p-3 border border-borderLight dark:border-gray-600 rounded-xl focus:outline-none focus:border-primary text-sm bg-bgPage dark:bg-gray-700 dark:text-white"
+                  placeholder="e.g. Capture ideas instantly"
+                />
+              </div>
+              
+              <div>
+                 <label className="block text-sm font-semibold text-textMain dark:text-gray-300 mb-3">Theme</label>
+                 <div className="flex gap-3">
+                    <button 
+                      onClick={() => setAppTheme('default')}
+                      className={`w-10 h-10 rounded-full bg-[#FFFFFF] border border-gray-200 shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'default' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
+                      title="Minimalist (Default)"
+                    >
+                       {appTheme === 'default' && <svg className="w-4 h-4 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                    </button>
+                    <button 
+                      onClick={() => setAppTheme('pink')}
+                      className={`w-10 h-10 rounded-full bg-[#FFC0CB] shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'pink' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
+                      title="Pink"
+                    >
+                       {appTheme === 'pink' && <svg className="w-4 h-4 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                    </button>
+                    <button 
+                      onClick={() => setAppTheme('blue')}
+                      className={`w-10 h-10 rounded-full bg-[#BAE6FD] shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'blue' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
+                      title="Blue"
+                    >
+                       {appTheme === 'blue' && <svg className="w-4 h-4 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                    </button>
+                    <button 
+                      onClick={() => setAppTheme('green')}
+                      className={`w-10 h-10 rounded-full bg-[#BBF7D0] shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'green' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
+                      title="Green"
+                    >
+                       {appTheme === 'green' && <svg className="w-4 h-4 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                    </button>
+                    <button 
+                      onClick={() => setAppTheme('purple')}
+                      className={`w-10 h-10 rounded-full bg-[#E9D5FF] shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'purple' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
+                      title="Purple"
+                    >
+                       {appTheme === 'purple' && <svg className="w-4 h-4 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                    </button>
+                 </div>
+              </div>
+
+              <button 
+                onClick={handleSaveSettings}
+                className="w-full py-3 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors mt-2"
+              >
+                Save Changes
+              </button>
+              
+              <div className="border-t border-gray-100 dark:border-gray-700 my-2"></div>
+              <div>
+                <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Data Backup</h4>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={handleExportData}
+                    className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center justify-center gap-2 text-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    Export
+                  </button>
+                  <label className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center justify-center gap-2 text-sm cursor-pointer">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                    Import
+                    <input type="file" className="hidden" accept=".json" onChange={handleImportData} />
+                  </label>
+                </div>
+              </div>
+            </div>
+          </Modal>
+
+          {/* Category Manager Modal */}
+          <Modal isOpen={showCategoryManager} onClose={() => setShowCategoryManager(false)} title="Manage Categories">
+            <div className="flex flex-col gap-4">
+              <div className="flex gap-2">
+                <input 
+                  id="new-cat-input"
+                  type="text" 
+                  placeholder="New category name..."
+                  className="flex-1 p-3 border border-borderLight dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-primary bg-bgPage dark:bg-gray-700 dark:text-white"
+                  onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                          handleAddCategory((e.target as HTMLInputElement).value);
+                          (e.target as HTMLInputElement).value = '';
+                      }
+                  }}
                 />
                 <button 
-                  onClick={() => handleAddNote(inputValue)}
-                  className="px-8 bg-primary hover:bg-primaryDark text-textOnPrimary font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-95"
+                  onClick={() => {
+                      const input = document.getElementById('new-cat-input') as HTMLInputElement;
+                      handleAddCategory(input.value);
+                      input.value = '';
+                  }}
+                  className="px-4 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors"
                 >
                   Add
                 </button>
               </div>
-              
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Quick:</span>
-                <div className="flex gap-2 flex-wrap">
-                  {quickActions
-                    .filter(qa => currentCategory === 'all' || qa.categoryId === currentCategory || qa.categoryId === 'general')
-                    .map(qa => (
-                      <button 
-                        key={qa.id}
-                        onClick={() => setInputValue(qa.text)}
-                        className="px-3 py-1 bg-gray-100 dark:bg-gray-700 hover:bg-primary/20 dark:hover:bg-indigo-900/30 hover:text-textMain dark:hover:text-indigo-300 border border-transparent rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 transition-colors"
-                      >
-                        {qa.text}
-                      </button>
-                    ))
-                  }
-                </div>
-                <button onClick={() => setShowQAManager(true)} className="ml-auto text-gray-300 hover:text-textMain transition-colors">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/></svg>
-                </button>
+              <div className="max-h-[300px] overflow-y-auto pr-1 flex flex-col gap-2">
+                {categories.map((cat) => (
+                  <div key={cat.id} className="flex items-center justify-between p-3 bg-bgPage dark:bg-gray-700/50 rounded-xl border border-borderLight dark:border-gray-700">
+                    {editingCatId === cat.id ? (
+                        <div className="flex items-center gap-2 flex-1">
+                            <input 
+                                value={editCatName}
+                                onChange={(e) => setEditCatName(e.target.value)}
+                                className="flex-1 p-1 text-sm border rounded bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                            />
+                            <button onClick={saveEditCategory} className="text-xs bg-primary/20 text-textMain px-2 py-1 rounded">Save</button>
+                        </div>
+                    ) : (
+                        <div className="flex items-center gap-2">
+                            <span className="font-medium text-textMain dark:text-gray-200">{cat.name}</span>
+                            {cat.id === 'general' && <span className="text-[10px] bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-300 px-1.5 py-0.5 rounded">Default</span>}
+                        </div>
+                    )}
+                    {cat.id !== 'general' && (
+                      <div className="flex items-center gap-1">
+                         <button onClick={() => startEditCategory(cat)} className="p-1.5 text-gray-400 hover:text-textMain hover:bg-primary/20 dark:hover:bg-indigo-900/30 rounded">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                         </button>
+                         <button onClick={() => handleDeleteCategory(cat.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                         </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
+          </Modal>
 
-            {/* Date Filter Bar */}
-            <div className="flex items-center gap-2 mb-6 w-full">
-              {/* Fixed "All Time" Button */}
-              <button
-                 onClick={() => { setFilterMode('all'); setCustomDate(''); }}
-                 className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border capitalize transition-all whitespace-nowrap ${filterMode === 'all' ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}
-               >
-                 All Time
-               </button>
-               
-               {/* Scrollable Filter Options */}
-               <div className="flex-1 flex gap-2 overflow-x-auto hide-scrollbar px-1">
-                  {['today', 'yesterday', 'week', 'month'].map(mode => (
-                     <button
-                       key={mode}
-                       onClick={() => { setFilterMode(mode as FilterMode); setCustomDate(''); }}
-                       className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border capitalize transition-all whitespace-nowrap ${filterMode === mode ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}
-                     >
-                       {mode}
-                     </button>
-                  ))}
-               </div>
-
-               {/* Fixed Date Picker Icon */}
-               <div className="shrink-0 relative">
-                  <div className={`p-1.5 rounded-full border transition-all ${filterMode === 'custom' ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                  </div>
-                  <input 
-                    type="date" 
-                    value={customDate}
-                    onChange={(e) => { setCustomDate(e.target.value); setFilterMode('custom'); }}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-               </div>
+          {/* Mobile Add Modal */}
+          <Modal isOpen={showMobileAdd} onClose={() => setShowMobileAdd(false)} title="New Note" footer={
+            <button 
+              onClick={() => handleAddNote(inputValue)}
+              className="w-full py-3.5 bg-primary text-textOnPrimary font-bold rounded-xl shadow-lg active:scale-95 transition-transform"
+            >
+              Add Note
+            </button>
+          }>
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-gray-500 dark:text-gray-400">Adding to <span className="font-bold text-textMain dark:text-indigo-400">{activeCategoryName}</span></p>
+              <textarea
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Type your note here..."
+                className="w-full h-32 p-4 bg-bgPage dark:bg-gray-800 border border-borderLight dark:border-gray-700 rounded-xl focus:outline-none focus:border-primary dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-800 transition-colors text-base text-textMain dark:text-gray-100 resize-none"
+                autoFocus
+              />
+              <div className="flex justify-between items-end">
+                 <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2 block">Quick Actions</span>
+                 <button onClick={() => setShowQAManager(true)} className="text-xs text-textMain dark:text-indigo-400 font-semibold px-3 py-1.5 mb-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md border border-borderLight dark:border-gray-600 transition-colors">Manage</button>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {quickActions
+                  .filter(qa => currentCategory === 'all' || qa.categoryId === currentCategory || qa.categoryId === 'general')
+                  .map(qa => (
+                    <button 
+                      key={qa.id}
+                      onClick={() => setInputValue(qa.text)}
+                      className="px-3 py-2 bg-gray-100 dark:bg-gray-700 active:bg-primary/50 dark:active:bg-indigo-900 active:text-textMain dark:active:text-indigo-300 border border-transparent rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 transition-colors"
+                    >
+                      {qa.text}
+                    </button>
+                  ))
+                }
+              </div>
             </div>
+          </Modal>
 
-            {/* Notes Grid */}
-            <div className="animate-fade-in pb-10">
-              {renderNotes()}
+          {/* Quick Action Manager Modal */}
+          <Modal isOpen={showQAManager} onClose={() => setShowQAManager(false)} title="Manage Quick Actions">
+            <div className="flex flex-col gap-4 hide-scrollbar">
+              <div className="p-4 bg-primary/10 dark:bg-indigo-900/20 rounded-xl border border-primary/20 dark:border-indigo-900/30">
+                 <h4 className="text-xs font-bold text-textMain dark:text-indigo-400 uppercase tracking-wide mb-3">Create New Action</h4>
+                 <div className="flex flex-col gap-2">
+                    <input 
+                      id="new-qa-input"
+                      type="text" 
+                      placeholder="Action name (e.g. Shopping List)"
+                      className="w-full p-3 border border-borderLight dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-primary bg-white dark:bg-gray-700 dark:text-white"
+                    />
+                    <div className="flex gap-2">
+                        <select id="new-qa-cat" className="p-3 border border-borderLight dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 flex-1 focus:outline-none">
+                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                        <button 
+                          onClick={() => {
+                              const input = document.getElementById('new-qa-input') as HTMLInputElement;
+                              const select = document.getElementById('new-qa-cat') as HTMLSelectElement;
+                              handleAddQA(input.value, select.value);
+                              input.value = '';
+                          }}
+                          className="px-6 bg-primary text-textOnPrimary font-bold rounded-lg hover:bg-primaryDark transition-colors shadow-sm"
+                        >
+                          Create
+                        </button>
+                    </div>
+                 </div>
+              </div>
+              <div className="border-t border-borderLight dark:border-gray-700 my-1"></div>
+              <div>
+                <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">Existing Actions</h4>
+                <div className="max-h-[250px] overflow-y-auto pr-1 flex flex-col gap-2">
+                  {quickActions.length === 0 ? (
+                    <div className="text-center py-8 px-4">
+                      <svg className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" /></svg>
+                      <h3 className="mt-2 text-sm font-medium text-gray-800 dark:text-gray-200">No Quick Actions</h3>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Create one above to get started.</p>
+                    </div>
+                  ) : (
+                    quickActions.map((qa) => (
+                      <div key={qa.id} className="group flex items-center justify-between p-3 bg-white dark:bg-gray-700/50 rounded-xl border border-borderLight dark:border-gray-700 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        {editingQAId === qa.id ? (
+                          <div className="flex flex-col gap-2 flex-1 mr-2">
+                            <input
+                              value={editQAText}
+                              onChange={(e) => setEditQAText(e.target.value)}
+                              className="p-1 text-sm border rounded w-full bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                              placeholder="Action Name"
+                            />
+                            <div className="flex gap-2">
+                              <select
+                                value={editQACat}
+                                onChange={(e) => setEditQACat(e.target.value)}
+                                className="text-xs p-1 border rounded flex-1 bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                              >
+                                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                              </select>
+                                            <button onClick={saveEditQA} disabled={syncStatus === 'syncing'} className="text-xs bg-primary/20 text-textMain px-3 rounded font-medium w-16 h-6 flex items-center justify-center">
+                                              {syncStatus === 'syncing' ? (
+                                                <svg className="animate-spin h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                              ) : (
+                                                "Save"
+                                              )}
+                                            </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <div>
+                              <div className="font-semibold text-textMain dark:text-gray-200 text-sm">{qa.text}</div>
+                              <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                                <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: getCategoryColor(qa.categoryId) }}></span>
+                                {categories.find(c => c.id === qa.categoryId)?.name || 'Unknown'}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => startEditQA(qa)} className="p-1.5 text-gray-400 hover:text-textMain hover:bg-primary/20 dark:hover:bg-indigo-900/30 rounded transition-colors">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                              </button>
+                              <button onClick={() => handleDeleteQA(qa.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))
+                  )}
+                                </div>
+              </div>
             </div>
-          </>
-        )}
-      </main>
+          </Modal>
 
+          {/* Confirmation Modals */}
+          <ConfirmationModal
+            isOpen={!!confirmDeleteNoteId}
+            onClose={() => setConfirmDeleteNoteId(null)}
+            onConfirm={handleDeleteNote}
+            title="Delete Note?"
+            message="This action cannot be undone. Are you sure you want to delete this note?"
+            confirmText="Delete"
+            isDestructive={true}
+          />
+          <ConfirmationModal
+            isOpen={!!confirmDeleteCategoryId}
+            onClose={() => setConfirmDeleteCategoryId(null)}
+            onConfirm={confirmCategoryDeletion}
+            title="Delete Category?"
+            message="Are you sure you want to delete this category? Notes will be moved to 'General'."
+            confirmText="Delete"
+            isDestructive={true}
+          />
+          <ConfirmationModal
+            isOpen={!!confirmDeleteQAId}
+            onClose={() => setConfirmDeleteQAId(null)}
+            onConfirm={confirmQADeletion}
+            title="Delete Quick Action?"
+            message="Are you sure you want to delete this quick action?"
+            confirmText="Delete"
+            isDestructive={true}
+          />
+        </>
+      )}
       {/* Footer */}
-      <footer className="mt-auto bg-surface dark:bg-gray-900 text-gray-500 dark:text-gray-400 py-6 text-center text-xs border-t border-borderLight dark:border-gray-800">
+      <footer className="bg-surface dark:bg-gray-800 text-gray-500 dark:text-gray-400 py-6 text-center text-xs border-t border-borderLight dark:border-gray-700">
         <div className="flex justify-center gap-6 mb-3">
           {/* LinkedIn */}
           <a href="https://www.linkedin.com/in/kenneth-irvin-butad-479b4b26b/" target="_blank" rel="noopener noreferrer" title="LinkedIn" className="hover:text-textMain dark:hover:text-indigo-400 transition-colors">
@@ -1197,416 +1564,20 @@ const App: React.FC = () => {
         &copy; {new Date().getFullYear()} Kenneth B. All rights reserved.
       </footer>
 
-      {/* Mobile FAB */}
-      <button 
-        onClick={() => setShowMobileAdd(true)}
-        className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-primary text-textOnPrimary shadow-2xl shadow-primary/40 flex items-center justify-center rounded-full active:scale-90 transition-transform z-40"
-        aria-label="Add Note"
-      >
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-      </button>
+      {/* Mobile FAB - only shown for logged in users */}
+      {user && (
+        <button 
+          onClick={() => setShowMobileAdd(true)}
+          className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-primary text-textOnPrimary shadow-2xl shadow-primary/40 flex items-center justify-center rounded-full active:scale-90 transition-transform z-40"
+          aria-label="Add Note"
+        >
+          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+        </button>
+      )}
 
       {/* --- MODALS --- */}
-      
-      {/* Onboarding Modal for New Users */}
-      <OnboardingModal 
-        isOpen={showOnboarding}
-        onClose={() => setShowOnboarding(false)}
-      />
+      {/* ... (all modals remain here) ... */}
 
-      {/* Login / Cloud Sync Modal */}
-      <Modal isOpen={showLoginModal} onClose={() => { setShowLoginModal(false); setAuthEmail(''); setAuthPassword(''); setAuthName(''); }} title="Enable Cloud Sync">
-        <div className="flex flex-col gap-4 py-2">
-          
-          {/* Email/Password Form */}
-          <div className="flex flex-col gap-3">
-             {isSignUp && (
-                <div className="relative animate-fade-in">
-                    <input 
-                       type="text" 
-                       value={authName}
-                       onChange={e => setAuthName(e.target.value)}
-                       className="peer w-full p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:border-indigo-400 placeholder-transparent text-gray-800 dark:text-white bg-white dark:bg-gray-700"
-                       placeholder="Your Name"
-                    />
-                    <label className="absolute left-3 -top-2.5 bg-white dark:bg-gray-800 px-1 text-xs text-indigo-500 transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-indigo-500">Your Name</label>
-                </div>
-             )}
-
-             <div className="relative">
-                <input 
-                   type="email" 
-                   value={authEmail}
-                   onChange={e => setAuthEmail(e.target.value)}
-                   className="peer w-full p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:border-indigo-400 placeholder-transparent text-gray-800 dark:text-white bg-white dark:bg-gray-700"
-                   placeholder="Email"
-                />
-                <label className="absolute left-3 -top-2.5 bg-white dark:bg-gray-800 px-1 text-xs text-indigo-500 transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-indigo-500">Email</label>
-             </div>
-             <div className="relative">
-                <input 
-                   type="password" 
-                   value={authPassword}
-                   onChange={e => setAuthPassword(e.target.value)}
-                   className="peer w-full p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:border-indigo-400 placeholder-transparent text-gray-800 dark:text-white bg-white dark:bg-gray-700"
-                   placeholder="Password"
-                   onKeyDown={e => e.key === 'Enter' && handleEmailAuth()}
-                />
-                <label className="absolute left-3 -top-2.5 bg-white dark:bg-gray-800 px-1 text-xs text-indigo-500 transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-indigo-500">Password</label>
-             </div>
-             
-             <button 
-                onClick={handleEmailAuth}
-                disabled={authLoading}
-                className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 dark:shadow-none hover:bg-indigo-700 transition-all flex justify-center items-center"
-             >
-                {authLoading ? (
-                    <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                ) : (
-                    isSignUp ? "Sign Up" : "Sign In"
-                )}
-             </button>
-             
-             <div className="flex justify-between items-center text-sm">
-                <button 
-                  onClick={handleForgotPassword}
-                  className="text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 text-xs"
-                >
-                  Forgot Password?
-                </button>
-                <div className="flex">
-                  <span className="text-gray-500 dark:text-gray-400 mr-1">{isSignUp ? "Already have an account?" : "Don't have an account?"}</span>
-                  <button 
-                    onClick={() => setIsSignUp(!isSignUp)}
-                    className="font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
-                  >
-                    {isSignUp ? "Sign In" : "Sign Up"}
-                  </button>
-                </div>
-             </div>
-          </div>
-
-          <div className="flex items-center gap-2 my-2">
-             <div className="h-px bg-gray-200 dark:bg-gray-600 flex-1"></div>
-             <span className="text-xs text-gray-400 uppercase">OR</span>
-             <div className="h-px bg-gray-200 dark:bg-gray-600 flex-1"></div>
-          </div>
-
-          <button 
-            onClick={handleGoogleLogin}
-            className="w-full py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-bold rounded-xl shadow-sm hover:bg-gray-50 dark:hover:bg-gray-600 flex items-center justify-center gap-3 transition-colors"
-          >
-             <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="currentColor" d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/></svg>
-             Continue with Google
-          </button>
-        </div>
-      </Modal>
-
-      {/* Settings Modal */}
-      <Modal isOpen={showSettings} onClose={() => setShowSettings(false)} title="App Settings">
-        <div className="flex flex-col gap-4">
-          <div>
-            <label className="block text-sm font-semibold text-textMain dark:text-gray-300 mb-2">App Name</label>
-            <input 
-              type="text" 
-              value={appName}
-              onChange={(e) => setAppName(e.target.value)}
-              className="w-full p-3 border border-borderLight dark:border-gray-600 rounded-xl focus:outline-none focus:border-primary text-sm bg-bgPage dark:bg-gray-700 dark:text-white"
-              placeholder="e.g. Quick Notes"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-textMain dark:text-gray-300 mb-2">App Subtitle</label>
-            <input 
-              type="text" 
-              value={appSubtitle}
-              onChange={(e) => setAppSubtitle(e.target.value)}
-              className="w-full p-3 border border-borderLight dark:border-gray-600 rounded-xl focus:outline-none focus:border-primary text-sm bg-bgPage dark:bg-gray-700 dark:text-white"
-              placeholder="e.g. Capture ideas instantly"
-            />
-          </div>
-          
-          <div>
-             <label className="block text-sm font-semibold text-textMain dark:text-gray-300 mb-3">Theme</label>
-             <div className="flex gap-3">
-                <button 
-                  onClick={() => setAppTheme('default')}
-                  className={`w-10 h-10 rounded-full bg-[#FFFFFF] border border-gray-200 shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'default' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
-                  title="Minimalist (Default)"
-                >
-                   {appTheme === 'default' && <svg className="w-4 h-4 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
-                </button>
-                <button 
-                  onClick={() => setAppTheme('pink')}
-                  className={`w-10 h-10 rounded-full bg-[#FFC0CB] shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'pink' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
-                  title="Pink"
-                >
-                   {appTheme === 'pink' && <svg className="w-4 h-4 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
-                </button>
-                <button 
-                  onClick={() => setAppTheme('blue')}
-                  className={`w-10 h-10 rounded-full bg-[#BAE6FD] shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'blue' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
-                  title="Blue"
-                >
-                   {appTheme === 'blue' && <svg className="w-4 h-4 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
-                </button>
-                <button 
-                  onClick={() => setAppTheme('green')}
-                  className={`w-10 h-10 rounded-full bg-[#BBF7D0] shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'green' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
-                  title="Green"
-                >
-                   {appTheme === 'green' && <svg className="w-4 h-4 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
-                </button>
-                <button 
-                  onClick={() => setAppTheme('purple')}
-                  className={`w-10 h-10 rounded-full bg-[#E9D5FF] shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'purple' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
-                  title="Purple"
-                >
-                   {appTheme === 'purple' && <svg className="w-4 h-4 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
-                </button>
-             </div>
-          </div>
-
-          <button 
-            onClick={handleSaveSettings}
-            className="w-full py-3 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors mt-2"
-          >
-            Save Changes
-          </button>
-          
-          <div className="border-t border-gray-100 dark:border-gray-700 my-2"></div>
-          <div>
-            <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">Data Backup</h4>
-            <div className="flex gap-3">
-              <button 
-                onClick={handleExportData}
-                className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center justify-center gap-2 text-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                Export
-              </button>
-              <label className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors flex items-center justify-center gap-2 text-sm cursor-pointer">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                Import
-                <input type="file" className="hidden" accept=".json" onChange={handleImportData} />
-              </label>
-            </div>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Category Manager Modal */}
-      <Modal isOpen={showCategoryManager} onClose={() => setShowCategoryManager(false)} title="Manage Categories">
-        <div className="flex flex-col gap-4">
-          <div className="flex gap-2">
-            <input 
-              id="new-cat-input"
-              type="text" 
-              placeholder="New category name..."
-              className="flex-1 p-3 border border-borderLight dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-primary bg-bgPage dark:bg-gray-700 dark:text-white"
-              onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                      handleAddCategory((e.target as HTMLInputElement).value);
-                      (e.target as HTMLInputElement).value = '';
-                  }
-              }}
-            />
-            <button 
-              onClick={() => {
-                  const input = document.getElementById('new-cat-input') as HTMLInputElement;
-                  handleAddCategory(input.value);
-                  input.value = '';
-              }}
-              className="px-4 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors"
-            >
-              Add
-            </button>
-          </div>
-          <div className="max-h-[300px] overflow-y-auto pr-1 flex flex-col gap-2">
-            {categories.map((cat) => (
-              <div key={cat.id} className="flex items-center justify-between p-3 bg-bgPage dark:bg-gray-700/50 rounded-xl border border-borderLight dark:border-gray-700">
-                {editingCatId === cat.id ? (
-                    <div className="flex items-center gap-2 flex-1">
-                        <input 
-                            value={editCatName}
-                            onChange={(e) => setEditCatName(e.target.value)}
-                            className="flex-1 p-1 text-sm border rounded bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
-                        />
-                        <button onClick={saveEditCategory} className="text-xs bg-primary/20 text-textMain px-2 py-1 rounded">Save</button>
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-2">
-                        <span className="font-medium text-textMain dark:text-gray-200">{cat.name}</span>
-                        {cat.id === 'general' && <span className="text-[10px] bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-300 px-1.5 py-0.5 rounded">Default</span>}
-                    </div>
-                )}
-                {cat.id !== 'general' && (
-                  <div className="flex items-center gap-1">
-                     <button onClick={() => startEditCategory(cat)} className="p-1.5 text-gray-400 hover:text-textMain hover:bg-primary/20 dark:hover:bg-indigo-900/30 rounded">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                     </button>
-                     <button onClick={() => handleDeleteCategory(cat.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                     </button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </Modal>
-
-      {/* Mobile Add Modal */}
-      <Modal isOpen={showMobileAdd} onClose={() => setShowMobileAdd(false)} title="New Note" footer={
-        <button 
-          onClick={() => handleAddNote(inputValue)}
-          className="w-full py-3.5 bg-primary text-textOnPrimary font-bold rounded-xl shadow-lg active:scale-95 transition-transform"
-        >
-          Add Note
-        </button>
-      }>
-        <div className="flex flex-col gap-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">Adding to <span className="font-bold text-textMain dark:text-indigo-400">{activeCategoryName}</span></p>
-          <textarea
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            placeholder="Type your note here..."
-            className="w-full h-32 p-4 bg-bgPage dark:bg-gray-800 border border-borderLight dark:border-gray-700 rounded-xl focus:outline-none focus:border-primary dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-800 transition-colors text-base text-textMain dark:text-gray-100 resize-none"
-            autoFocus
-          />
-          <div className="flex justify-between items-end">
-             <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2 block">Quick Actions</span>
-             <button onClick={() => setShowQAManager(true)} className="text-xs text-textMain dark:text-indigo-400 font-semibold px-2 py-1 mb-1 hover:bg-primary/20 dark:hover:bg-indigo-900/30 rounded">Manage</button>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {quickActions
-              .filter(qa => currentCategory === 'all' || qa.categoryId === currentCategory || qa.categoryId === 'general')
-              .map(qa => (
-                <button 
-                  key={qa.id}
-                  onClick={() => setInputValue(qa.text)}
-                  className="px-3 py-2 bg-gray-100 dark:bg-gray-700 active:bg-primary/50 dark:active:bg-indigo-900 active:text-textMain dark:active:text-indigo-300 border border-transparent rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 transition-colors"
-                >
-                  {qa.text}
-                </button>
-              ))
-            }
-          </div>
-        </div>
-      </Modal>
-
-      {/* Quick Action Manager Modal */}
-      <Modal isOpen={showQAManager} onClose={() => setShowQAManager(false)} title="Manage Quick Actions">
-        <div className="flex flex-col gap-4">
-          <div className="p-4 bg-primary/10 dark:bg-indigo-900/20 rounded-xl border border-primary/20 dark:border-indigo-900/30">
-             <h4 className="text-xs font-bold text-textMain dark:text-indigo-400 uppercase tracking-wide mb-3">Create New Action</h4>
-             <div className="flex flex-col gap-2">
-                <input 
-                  id="new-qa-input"
-                  type="text" 
-                  placeholder="Action name (e.g. Shopping List)"
-                  className="w-full p-3 border border-borderLight dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-primary bg-white dark:bg-gray-700 dark:text-white"
-                />
-                <div className="flex gap-2">
-                    <select id="new-qa-cat" className="p-3 border border-borderLight dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 flex-1 focus:outline-none">
-                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
-                    <button 
-                      onClick={() => {
-                          const input = document.getElementById('new-qa-input') as HTMLInputElement;
-                          const select = document.getElementById('new-qa-cat') as HTMLSelectElement;
-                          handleAddQA(input.value, select.value);
-                          input.value = '';
-                      }}
-                      className="px-6 bg-primary text-textOnPrimary font-bold rounded-lg hover:bg-primaryDark transition-colors shadow-sm"
-                    >
-                      Create
-                    </button>
-                </div>
-             </div>
-          </div>
-          <div className="border-t border-borderLight dark:border-gray-700 my-1"></div>
-          <div>
-            <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">Existing Actions</h4>
-            <div className="max-h-[250px] overflow-y-auto pr-1 flex flex-col gap-2">
-                {quickActions.length === 0 ? (
-                    <p className="text-center text-gray-400 text-sm py-4 italic">No quick actions defined yet.</p>
-                ) : (
-                    quickActions.map((qa) => (
-                    <div key={qa.id} className="flex items-center justify-between p-3 bg-white dark:bg-gray-700/50 rounded-xl border border-borderLight dark:border-gray-700 shadow-sm">
-                        {editingQAId === qa.id ? (
-                            <div className="flex flex-col gap-2 flex-1 mr-2">
-                                <input 
-                                    value={editQAText}
-                                    onChange={(e) => setEditQAText(e.target.value)}
-                                    className="p-1 text-sm border rounded w-full bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
-                                    placeholder="Action Name"
-                                />
-                                <div className="flex gap-2">
-                                    <select 
-                                        value={editQACat}
-                                        onChange={(e) => setEditQACat(e.target.value)}
-                                        className="text-xs p-1 border rounded flex-1 bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
-                                    >
-                                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                    </select>
-                                    <button onClick={saveEditQA} className="text-xs bg-primary/20 text-textMain px-3 rounded font-medium">Save</button>
-                                </div>
-                            </div>
-                        ) : (
-                            <div>
-                                <div className="font-semibold text-textMain dark:text-gray-200 text-sm">{qa.text}</div>
-                                <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                                    <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: getCategoryColor(qa.categoryId) }}></span>
-                                    {categories.find(c => c.id === qa.categoryId)?.name || 'Unknown'}
-                                </div>
-                            </div>
-                        )}
-                        <div className="flex items-center gap-1">
-                            <button onClick={() => startEditQA(qa)} className="p-1.5 text-gray-400 hover:text-textMain hover:bg-primary/20 dark:hover:bg-indigo-900/30 rounded transition-colors">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                            </button>
-                            <button onClick={() => handleDeleteQA(qa.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors">
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                            </button>
-                        </div>
-                    </div>
-                    ))
-                )}
-            </div>
-          </div>
-        </div>
-      </Modal>
-
-      <ConfirmationModal
-        isOpen={!!confirmDeleteNoteId}
-        onClose={() => setConfirmDeleteNoteId(null)}
-        onConfirm={handleDeleteNote}
-        title="Delete Note?"
-        message="This action cannot be undone. Are you sure you want to delete this note?"
-        confirmText="Delete"
-        isDestructive={true}
-      />
-      
-      <ConfirmationModal
-        isOpen={!!confirmDeleteCategoryId}
-        onClose={() => setConfirmDeleteCategoryId(null)}
-        onConfirm={confirmCategoryDeletion}
-        title="Delete Category?"
-        message="Are you sure you want to delete this category? Notes will be moved to 'General'."
-        confirmText="Delete"
-        isDestructive={true}
-      />
-
-      <ConfirmationModal
-        isOpen={!!confirmDeleteQAId}
-        onClose={() => setConfirmDeleteQAId(null)}
-        onConfirm={confirmQADeletion}
-        title="Delete Quick Action?"
-        message="Are you sure you want to delete this quick action?"
-        confirmText="Delete"
-        isDestructive={true}
-      />
     </div>
   );
 };

@@ -56,6 +56,7 @@
             animation: {
               'slide-up': 'slideUp 0.3s ease-out forwards',
               'fade-in': 'fadeIn 0.2s ease-out forwards',
+              'pulse-slow': 'pulse-slow 2.5s infinite ease-in-out',
             },
             keyframes: {
               slideUp: {
@@ -65,6 +66,9 @@
               fadeIn: {
                 '0%': { opacity: '0' },
                 '100%': { opacity: '1' },
+              },
+              'pulse-slow': {
+                '50%': { transform: 'scale(1.05)' },
               }
             }
           },
@@ -152,6 +156,21 @@
           transform: scale(1.0);
           opacity: 1;
         }
+      }
+
+      /* Custom Scrollbar Styles */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background-color: rgba(128, 128, 128, 0.4);
+        border-radius: 10px;
+        border: 2px solid transparent;
+        background-clip: content-box;
       }
     </style>
   <script type="importmap">
