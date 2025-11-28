@@ -897,26 +897,18 @@ const App: React.FC = () => {
           <div className="flex items-center gap-3">
             {/* User Menu */}
             <div className="relative" ref={menuRef}>
-              <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 text-textOnPrimary dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors flex items-center gap-2">
-                {user ? (
-                  user.photoURL ? (
-                  <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border-2 border-white/50" />
-                  ) : (
-                    <div 
-                      className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center border-2 border-white/50 font-bold text-sm"
-                      style={{ backgroundColor: getCategoryColor(user.uid) }}
-                    >
-                      {getUserInitials(user) === '?' ? <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg> : getUserInitials(user)}
-                    </div>
-                  )
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center border-2 border-white/50">
-                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
-                  </div>
-                )}
-              </button>
-              
-              {isMenuOpen && (
+              {user ? (
+                <>
+                  <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 text-textOnPrimary dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors flex items-center gap-2">
+                    {user.photoURL ? (
+                      <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border-2 border-white/50" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center border-2 border-white/50 font-bold text-sm" style={{ backgroundColor: getCategoryColor(user.uid) }}>
+                        {getUserInitials(user) === '?' ? <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg> : getUserInitials(user)}
+                      </div>
+                    )}
+                  </button>
+                  {isMenuOpen && (
                 <div className="absolute right-0 mt-2 w-56 bg-surface dark:bg-gray-800 rounded-xl shadow-xl py-2 animate-fade-in origin-top-right overflow-hidden z-[60] border border-borderLight dark:border-gray-700">
                   {user ? (
                     <>
@@ -991,7 +983,13 @@ const App: React.FC = () => {
                       Sign In / Sign Up
                     </button>
                   )}
-                </div>
+                  </div>
+                  )}
+                </>
+              ) : (
+                <button onClick={() => setShowLoginModal(true)} className="px-5 py-2 bg-white/25 hover:bg-white/40 text-textOnPrimary rounded-lg text-sm font-bold transition-colors shadow-sm">
+                  Login
+                </button>
               )}
             </div>
           </div>
