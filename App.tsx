@@ -403,7 +403,6 @@ const App: React.FC = () => {
             showToast("Account created successfully!");
         } else {
             await signInWithEmailAndPassword(auth, authEmail, authPassword);
-            showToast("Signed in successfully!");
         }
         setShowLoginModal(false);
         setAuthEmail('');
