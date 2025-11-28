@@ -1,5 +1,6 @@
 import React from 'react';
 import AppPreview from './AppPreview';
+import KeyFeatures from './KeyFeatures';
 
 interface LandingPageProps {
   onLoginClick: () => void;
@@ -21,6 +22,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
             Get Started
           </button>
         </div>
+        <KeyFeatures />
       </div>
     </div>
   );

@@ -289,20 +289,23 @@ const App: React.FC = () => {
   useEffect(() => localStorage.setItem('app_theme', appTheme), [appTheme]);
 
   useEffect(() => {
+    const isLightModeForced = !user;
+    const effectiveDarkMode = isLightModeForced ? false : darkMode;
+
     const currentThemeKey = user ? appTheme : 'green';
     const themeConfig = THEMES[currentThemeKey] || THEMES.default;
     const root = document.documentElement;
 
-    if (darkMode) {
+    if (effectiveDarkMode) {
       root.classList.add('dark');
-      localStorage.theme = 'dark';
+      if (!isLightModeForced) localStorage.theme = 'dark';
       root.style.setProperty('--color-primary', themeConfig.darkPrimary || THEMES.default.darkPrimary);
       root.style.setProperty('--color-primary-dark', themeConfig.darkPrimaryDark || THEMES.default.darkPrimaryDark);
       root.style.setProperty('--color-text-on-primary', themeConfig.darkTextOnPrimary || THEMES.default.darkTextOnPrimary);
       root.style.setProperty('--color-bg-page', '#1f2937');
     } else {
       root.classList.remove('dark');
-      localStorage.theme = 'light';
+      if (!isLightModeForced) localStorage.theme = 'light';
       root.style.setProperty('--color-primary', themeConfig.primary || THEMES.default.primary);
       root.style.setProperty('--color-primary-dark', themeConfig.primaryDark || THEMES.default.primaryDark);
       root.style.setProperty('--color-text-on-primary', themeConfig.textOnPrimary || THEMES.default.textOnPrimary);
@@ -1462,6 +1465,9 @@ const App: React.FC = () => {
           </a>
         </div>
         &copy; {new Date().getFullYear()} Kenneth B. All rights reserved.
+        <div className="mt-2 text-gray-400 dark:text-gray-600">
+          Inspired by and for Chan Li ❤️
+        </div>
       </footer>
 
       {user && (
