@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Note, Category, QuickAction, FilterMode, ToastMessage, ToastType } from './types';
 import Modal from './components/Modal';
@@ -14,7 +15,8 @@ import {
   User,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  updateProfile
 } from 'firebase/auth';
 import { 
   collection, 
@@ -162,6 +164,7 @@ const App: React.FC = () => {
   const [showLoginModal, setShowLoginModal] = useState(false);
   
   // Login Form State
+  const [authName, setAuthName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
@@ -246,7 +249,7 @@ const App: React.FC = () => {
     
     if (appNameLocal || appSubtitleLocal || appThemeLocal) {
         setSyncStatus('syncing');
-        await setDoc(doc(db!, `users/${user.uid}/settings/general`), {
+        await setDoc(doc(db!, `users/${uid}/settings/general`), {
             appName: appNameLocal || 'Quick Notes',
             appSubtitle: appSubtitleLocal || 'Capture ideas instantly',
             appTheme: appThemeLocal || 'default'
@@ -393,7 +396,7 @@ const App: React.FC = () => {
   // --- AUTH ACTIONS ---
   const handleGoogleLogin = async () => {
     if (!auth || !googleProvider) {
-      showToast("Cloud sync is unavailable", "error");
+      showToast("Firebase keys missing. Check configuration.", "error");
       return;
     }
     try {
@@ -407,7 +410,7 @@ const App: React.FC = () => {
 
   const handleEmailAuth = async () => {
     if (!auth) {
-        showToast("Auth service unavailable", "error");
+        showToast("Firebase keys missing. Check configuration.", "error");
         return;
     }
     if (!authEmail || !authPassword) {
@@ -418,7 +421,14 @@ const App: React.FC = () => {
     setAuthLoading(true);
     try {
         if (isSignUp) {
-            await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+            const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+            if (authName) {
+                await updateProfile(userCredential.user, {
+                    displayName: authName
+                });
+                // Force local user update to reflect name
+                setUser({ ...userCredential.user, displayName: authName });
+            }
             showToast("Account created successfully!");
         } else {
             await signInWithEmailAndPassword(auth, authEmail, authPassword);
@@ -427,6 +437,7 @@ const App: React.FC = () => {
         setShowLoginModal(false);
         setAuthEmail('');
         setAuthPassword('');
+        setAuthName('');
     } catch (error: any) {
         console.error("Auth error", error);
         let msg = "Authentication failed";
@@ -434,6 +445,7 @@ const App: React.FC = () => {
         if (error.code === 'auth/wrong-password') msg = "Incorrect password";
         if (error.code === 'auth/user-not-found') msg = "User not found";
         if (error.code === 'auth/weak-password') msg = "Password should be at least 6 characters";
+        if (error.code === 'auth/invalid-api-key') msg = "Invalid API Key";
         showToast(msg, "error");
     } finally {
         setAuthLoading(false);
@@ -441,7 +453,10 @@ const App: React.FC = () => {
   };
 
   const handleForgotPassword = async () => {
-    if (!auth) return;
+    if (!auth) {
+        showToast("Firebase keys missing", "error");
+        return;
+    }
     if (!authEmail) {
       showToast("Please enter your email first", "error");
       return;
@@ -504,6 +519,7 @@ const App: React.FC = () => {
       return;
     }
     
+    // Explicitly set category to 'general' if current filter is 'all', otherwise use current category
     const categoryId = currentCategory === 'all' ? 'general' : currentCategory;
     
     const newNote: Note = {
@@ -820,7 +836,9 @@ const App: React.FC = () => {
     : categories.find(c => c.id === currentCategory)?.name;
 
   const renderNotes = () => {
+    // 1. Group notes by date
     const groups: { [key: string]: Note[] } = {};
+    
     filteredNotes.forEach(note => {
       const d = new Date(note.timestamp);
       const year = d.getFullYear();
@@ -831,6 +849,7 @@ const App: React.FC = () => {
       groups[dateKey].push(note);
     });
 
+    // 2. Sort keys descending (Latest dates first)
     const sortedDateKeys = Object.keys(groups).sort().reverse();
 
     if (sortedDateKeys.length === 0) {
@@ -841,12 +860,15 @@ const App: React.FC = () => {
       );
     }
 
+    // 3. Render Groups
     return sortedDateKeys.map((dateKey, groupIdx) => {
+      // Sort notes within group by timestamp descending (latest first)
       const notesInGroup = groups[dateKey].sort((a,b) => b.timestamp - a.timestamp);
       const groupDateTimestamp = notesInGroup[0].timestamp;
       
       return (
         <div key={dateKey} className="mb-8 bg-surface dark:bg-gray-800 rounded-2xl shadow-sm border border-borderLight dark:border-gray-700 overflow-hidden animate-slide-up" style={{ animationDelay: `${groupIdx * 50}ms` }}>
+          {/* Card Header: Date */}
           <div className="bg-bgPage dark:bg-gray-900/50 px-5 py-4 border-b border-borderLight dark:border-gray-700 flex items-center justify-between">
             <h3 className="font-bold text-textMain dark:text-gray-100 text-lg tracking-tight">
               {formatHeaderDate(groupDateTimestamp)}
@@ -855,6 +877,7 @@ const App: React.FC = () => {
               {notesInGroup.length} {notesInGroup.length === 1 ? 'Note' : 'Notes'}
             </span>
           </div>
+          {/* List of Notes */}
           <div className="divide-y divide-borderLight dark:divide-gray-700">
             {notesInGroup.map(note => (
               <NoteCard 
@@ -878,6 +901,8 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col font-sans text-textMain dark:text-gray-100 bg-bgPage transition-colors duration-300">
       <ToastContainer toasts={toasts} />
+      
+      {/* Navbar */}
       <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-primary dark:bg-gray-900/95 backdrop-blur-md shadow-lg py-3' : 'bg-primary dark:bg-gray-900 py-6'}`}>
         <div className="container mx-auto px-4 flex justify-between items-center">
           <div className="flex flex-col text-textOnPrimary dark:text-white">
@@ -923,6 +948,7 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-3">
+            {/* Dark Mode Toggle */}
             <button 
               onClick={toggleDarkMode}
               className="p-2 text-textOnPrimary dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors"
@@ -935,18 +961,26 @@ const App: React.FC = () => {
               )}
             </button>
 
+            {/* User Menu */}
             <div className="relative" ref={menuRef}>
               <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 text-textOnPrimary dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors flex items-center gap-2">
                  {user?.photoURL ? (
                    <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border-2 border-white/50" />
                  ) : (
-                   <svg className="w-7 h-7" fill="currentColor" viewBox="0 0 20 20"><path d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"/></svg>
+                   <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center border-2 border-white/50">
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
+                   </div>
                  )}
               </button>
               
               {isMenuOpen && (
                 <div className="absolute right-0 mt-2 w-56 bg-surface dark:bg-gray-800 rounded-xl shadow-xl py-2 animate-fade-in origin-top-right overflow-hidden z-[60] border border-borderLight dark:border-gray-700">
-                  {user && <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700 text-xs text-gray-500 dark:text-gray-400 truncate">Signed in as {user.email}</div>}
+                  {user && (
+                      <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700">
+                          <div className="font-semibold text-textMain dark:text-white truncate">{user.displayName || 'User'}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</div>
+                      </div>
+                  )}
                   <button onClick={() => { setShowSettings(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
                     <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                     Settings
@@ -970,7 +1004,9 @@ const App: React.FC = () => {
         </div>
       </nav>
 
+      {/* Main Content */}
       <main className="container mx-auto px-4 pt-32 max-w-3xl flex-1">
+        {/* Category Navigation (Sticky) */}
         <div className={`z-30 flex items-center mb-8 p-1.5 backdrop-blur-md rounded-full border border-borderLight/50 shadow-sm transition-all duration-500 ease-in-out origin-top sticky top-[60px] w-full
           ${isScrolled 
             ? "bg-white/90 dark:bg-gray-800/90 shadow-lg border-white/10 dark:border-gray-700" 
@@ -1013,6 +1049,7 @@ const App: React.FC = () => {
           </div>
         </div>
 
+        {/* Desktop Input Card */}
         <div className="hidden md:block bg-surface dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-borderLight dark:border-gray-700 mb-8 animate-slide-up">
           <div className="flex gap-4 mb-4">
             <input 
@@ -1053,7 +1090,9 @@ const App: React.FC = () => {
           </div>
         </div>
 
+        {/* Date Filter Bar */}
         <div className="flex items-center gap-2 mb-6 w-full">
+          {/* Fixed "All Time" Button */}
           <button
              onClick={() => { setFilterMode('all'); setCustomDate(''); }}
              className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border capitalize transition-all whitespace-nowrap ${filterMode === 'all' ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}
@@ -1061,6 +1100,7 @@ const App: React.FC = () => {
              All Time
            </button>
            
+           {/* Scrollable Filter Options */}
            <div className="flex-1 flex gap-2 overflow-x-auto hide-scrollbar px-1">
               {['today', 'yesterday', 'week', 'month'].map(mode => (
                  <button
@@ -1073,6 +1113,7 @@ const App: React.FC = () => {
               ))}
            </div>
 
+           {/* Fixed Date Picker Icon */}
            <div className="shrink-0 relative">
               <div className={`p-1.5 rounded-full border transition-all ${filterMode === 'custom' ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}>
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -1086,20 +1127,23 @@ const App: React.FC = () => {
            </div>
         </div>
 
+        {/* Notes Grid */}
         <div className="animate-fade-in pb-10">
           {renderNotes()}
         </div>
       </main>
 
+      {/* Footer */}
       <footer className="mt-auto bg-surface dark:bg-gray-900 text-gray-500 dark:text-gray-400 py-6 text-center text-xs border-t border-borderLight dark:border-gray-800">
         <div className="flex justify-center gap-4 mb-2">
           <a href="#" className="hover:text-textMain dark:hover:text-indigo-400 transition-colors font-medium">Privacy</a>
           <a href="#" className="hover:text-textMain dark:hover:text-indigo-400 transition-colors font-medium">Terms</a>
           <a href="#" className="hover:text-textMain dark:hover:text-indigo-400 transition-colors font-medium">Support</a>
         </div>
-        &copy; {new Date().getFullYear()} Kenneth B. All rights reserved.
+        &copy; {new Date().getFullYear()} {appName}. All rights reserved.
       </footer>
 
+      {/* Mobile FAB */}
       <button 
         onClick={() => setShowMobileAdd(true)}
         className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-primary text-textOnPrimary shadow-2xl shadow-primary/40 flex items-center justify-center rounded-full active:scale-90 transition-transform z-40"
@@ -1108,11 +1152,27 @@ const App: React.FC = () => {
         <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
       </button>
 
-      <Modal isOpen={showLoginModal} onClose={() => { setShowLoginModal(false); setAuthEmail(''); setAuthPassword(''); }} title="Enable Cloud Sync">
+      {/* --- MODALS --- */}
+      
+      {/* Login / Cloud Sync Modal */}
+      <Modal isOpen={showLoginModal} onClose={() => { setShowLoginModal(false); setAuthEmail(''); setAuthPassword(''); setAuthName(''); }} title="Enable Cloud Sync">
         <div className="flex flex-col gap-4 py-2">
           
           {/* Email/Password Form */}
           <div className="flex flex-col gap-3">
+             {isSignUp && (
+                <div className="relative animate-fade-in">
+                    <input 
+                       type="text" 
+                       value={authName}
+                       onChange={e => setAuthName(e.target.value)}
+                       className="peer w-full p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:border-indigo-400 placeholder-transparent text-gray-800 dark:text-white bg-white dark:bg-gray-700"
+                       placeholder="Your Name"
+                    />
+                    <label className="absolute left-3 -top-2.5 bg-white dark:bg-gray-800 px-1 text-xs text-indigo-500 transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-3 peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-indigo-500">Your Name</label>
+                </div>
+             )}
+
              <div className="relative">
                 <input 
                    type="email" 
@@ -1182,6 +1242,7 @@ const App: React.FC = () => {
         </div>
       </Modal>
 
+      {/* Settings Modal */}
       <Modal isOpen={showSettings} onClose={() => setShowSettings(false)} title="App Settings">
         <div className="flex flex-col gap-4">
           <div>
@@ -1274,6 +1335,7 @@ const App: React.FC = () => {
         </div>
       </Modal>
 
+      {/* Category Manager Modal */}
       <Modal isOpen={showCategoryManager} onClose={() => setShowCategoryManager(false)} title="Manage Categories">
         <div className="flex flex-col gap-4">
           <div className="flex gap-2">
@@ -1334,6 +1396,7 @@ const App: React.FC = () => {
         </div>
       </Modal>
 
+      {/* Mobile Add Modal */}
       <Modal isOpen={showMobileAdd} onClose={() => setShowMobileAdd(false)} title="New Note" footer={
         <button 
           onClick={() => handleAddNote(inputValue)}
@@ -1372,6 +1435,7 @@ const App: React.FC = () => {
         </div>
       </Modal>
 
+      {/* Quick Action Manager Modal */}
       <Modal isOpen={showQAManager} onClose={() => setShowQAManager(false)} title="Manage Quick Actions">
         <div className="flex flex-col gap-4">
           <div className="p-4 bg-primary/10 dark:bg-indigo-900/20 rounded-xl border border-primary/20 dark:border-indigo-900/30">
