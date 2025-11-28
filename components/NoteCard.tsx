@@ -140,7 +140,7 @@ const NoteCard: React.FC<NoteCardProps> = ({
 
   return (
     <div 
-      className={`w-full bg-white dark:bg-gray-800 transition-colors duration-200 border-l-4 ${isActive ? 'bg-indigo-50/50 dark:bg-indigo-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
+      className={`w-full bg-white dark:bg-gray-800 transition-colors duration-200 border-l-4 ${isActive ? 'bg-indigo-50/20 dark:bg-indigo-900/20' : 'hover:bg-gray-50/50 dark:hover:bg-gray-700/50'}`}
       style={{ borderLeftColor: categoryColor }}
     >
       <div className="px-5 py-4">
@@ -159,7 +159,7 @@ const NoteCard: React.FC<NoteCardProps> = ({
         {isActive ? (
           <div className="animate-fade-in mt-2">
             <textarea
-              className="w-full p-3 text-sm text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 dark:focus:ring-indigo-900 min-h-[100px] resize-y bg-white dark:bg-gray-900"
+              className="w-full p-3 text-sm text-textMain dark:text-gray-200 border border-borderLight dark:border-gray-700 rounded-lg focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 dark:focus:ring-indigo-900 min-h-[100px] resize-y bg-white dark:bg-gray-900"
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
               autoFocus
@@ -175,7 +175,7 @@ const NoteCard: React.FC<NoteCardProps> = ({
                     <select 
                        value={editCategoryId}
                        onChange={e => setEditCategoryId(e.target.value)}
-                       className="w-full text-xs pl-9 pr-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 dark:focus:ring-indigo-900 cursor-pointer appearance-none shadow-sm"
+                       className="w-full text-xs pl-9 pr-3 py-2.5 border border-borderLight dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 dark:focus:ring-indigo-900 cursor-pointer appearance-none shadow-sm"
                     >
                        {categories.map(c => (
                            <option key={c.id} value={c.id}>{c.name}</option>
@@ -196,7 +196,7 @@ const NoteCard: React.FC<NoteCardProps> = ({
                         type="datetime-local"
                         value={editDate}
                         onChange={(e) => setEditDate(e.target.value)}
-                        className="w-full text-xs pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-200 dark:focus:ring-indigo-900 cursor-pointer shadow-sm"
+                        className="w-full text-xs pl-9 pr-3 py-2 border border-borderLight dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/20 dark:focus:ring-indigo-900 cursor-pointer shadow-sm"
                     />
                 </div>
             </div>
@@ -217,7 +217,7 @@ const NoteCard: React.FC<NoteCardProps> = ({
                 <button 
                   onClick={handleUndo}
                   disabled={historyIndex === 0}
-                  className="p-2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-md transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400"
+                  className="p-2 text-gray-400 hover:text-textMain hover:bg-primary/10 dark:hover:bg-indigo-900/30 rounded-md transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400"
                   title="Undo"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6M3 10l6-6" /></svg>
@@ -225,7 +225,7 @@ const NoteCard: React.FC<NoteCardProps> = ({
                 <button 
                   onClick={handleRedo}
                   disabled={historyIndex === history.length - 1}
-                  className="p-2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-md transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400"
+                  className="p-2 text-gray-400 hover:text-textMain hover:bg-primary/10 dark:hover:bg-indigo-900/30 rounded-md transition-colors disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400"
                   title="Redo"
                 >
                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6M21 10l-6-6" /></svg>
@@ -235,13 +235,13 @@ const NoteCard: React.FC<NoteCardProps> = ({
               <div className="flex gap-3">
                 <button 
                 onClick={handleCancel}
-                className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg shadow-sm transition-all"
+                className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 bg-white dark:bg-gray-800 border border-borderLight dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg shadow-sm transition-all"
                 >
                 Cancel
                 </button>
                 <button 
                 onClick={handleSave}
-                className="px-4 py-2 text-xs font-semibold text-white bg-indigo-500 hover:bg-indigo-600 dark:bg-indigo-600 dark:hover:bg-indigo-700 rounded-lg shadow-sm transition-all hover:shadow-md"
+                className="px-4 py-2 text-xs font-semibold text-textOnPrimary bg-primary hover:bg-primaryDark dark:bg-indigo-600 dark:hover:bg-indigo-700 rounded-lg shadow-sm transition-all hover:shadow-md"
                 >
                 Done
                 </button>
@@ -250,7 +250,7 @@ const NoteCard: React.FC<NoteCardProps> = ({
           </div>
         ) : (
           <div 
-            className="text-gray-800 dark:text-gray-200 text-[15px] leading-relaxed cursor-pointer whitespace-pre-wrap break-words"
+            className="text-textMain dark:text-gray-200 text-[15px] leading-relaxed cursor-pointer whitespace-pre-wrap break-words"
             onClick={onActivate}
           >
             {note.content}
