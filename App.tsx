@@ -1004,9 +1004,12 @@ const App: React.FC = () => {
                   />
                   <button 
                     onClick={() => handleAddNote(inputValue)}
-                    className="px-8 bg-primary hover:bg-primaryDark text-textOnPrimary font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-95"
+                    disabled={syncStatus === 'syncing'}
+                    className="px-8 bg-primary hover:bg-primaryDark text-textOnPrimary font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center w-28"
                   >
-                    Add
+                    {syncStatus === 'syncing' ? (
+                      <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    ) : "Add"}
                   </button>
                 </div>
                 
@@ -1026,7 +1029,11 @@ const App: React.FC = () => {
                       ))
                     }
                   </div>
-                  <button onClick={() => setShowQAManager(true)} className="ml-auto text-gray-300 hover:text-textMain transition-colors">
+                  <button 
+                    onClick={() => setShowQAManager(true)} 
+                    className="ml-auto p-1.5 text-gray-400 hover:text-textMain hover:bg-primary/10 dark:hover:bg-indigo-900/30 rounded-full transition-colors"
+                    title="Manage Quick Actions"
+                  >
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/></svg>
                   </button>
                 </div>
@@ -1173,9 +1180,12 @@ const App: React.FC = () => {
 
               <button 
                 onClick={handleSaveSettings}
-                className="w-full py-3 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors mt-2"
+                disabled={syncStatus === 'syncing'}
+                className="w-full py-3 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors mt-2 flex items-center justify-center"
               >
-                Save Changes
+                {syncStatus === 'syncing' ? (
+                  <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                ) : "Save Changes"}
               </button>
               
               <div className="border-t border-gray-100 dark:border-gray-700 my-2"></div>
@@ -1220,9 +1230,12 @@ const App: React.FC = () => {
                       handleAddCategory(input.value);
                       input.value = '';
                   }}
-                  className="px-4 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors"
+                  disabled={syncStatus === 'syncing'}
+                  className="px-4 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors w-24 flex items-center justify-center"
                 >
-                  Add
+                  {syncStatus === 'syncing' ? (
+                    <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                  ) : "Add"}
                 </button>
               </div>
               <div className="max-h-[300px] overflow-y-auto pr-1 flex flex-col gap-2">
@@ -1235,7 +1248,11 @@ const App: React.FC = () => {
                                 onChange={(e) => setEditCatName(e.target.value)}
                                 className="flex-1 p-1 text-sm border rounded bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
                             />
-                            <button onClick={saveEditCategory} className="text-xs bg-primary/20 text-textMain px-2 py-1 rounded">Save</button>
+                            <button onClick={saveEditCategory} disabled={syncStatus === 'syncing'} className="text-xs bg-primary/20 text-textMain px-2 py-1 rounded w-16 h-6 flex items-center justify-center">
+                              {syncStatus === 'syncing' ? (
+                                <svg className="animate-spin h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                              ) : "Save"}
+                            </button>
                         </div>
                     ) : (
                         <div className="flex items-center gap-2">
@@ -1262,9 +1279,12 @@ const App: React.FC = () => {
           <Modal isOpen={showMobileAdd} onClose={() => setShowMobileAdd(false)} title="New Note" footer={
             <button 
               onClick={() => handleAddNote(inputValue)}
-              className="w-full py-3.5 bg-primary text-textOnPrimary font-bold rounded-xl shadow-lg active:scale-95 transition-transform"
+              disabled={syncStatus === 'syncing'}
+              className="w-full py-3.5 bg-primary text-textOnPrimary font-bold rounded-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center"
             >
-              Add Note
+              {syncStatus === 'syncing' ? (
+                <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+              ) : "Add Note"}
             </button>
           }>
             <div className="flex flex-col gap-4">
@@ -1319,9 +1339,12 @@ const App: React.FC = () => {
                               handleAddQA(input.value, select.value);
                               input.value = '';
                           }}
-                          className="px-6 bg-primary text-textOnPrimary font-bold rounded-lg hover:bg-primaryDark transition-colors shadow-sm"
+                          disabled={syncStatus === 'syncing'}
+                          className="px-6 bg-primary text-textOnPrimary font-bold rounded-lg hover:bg-primaryDark transition-colors shadow-sm w-28 flex items-center justify-center"
                         >
-                          Create
+                          {syncStatus === 'syncing' ? (
+                            <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                          ) : "Create"}
                         </button>
                     </div>
                  </div>
