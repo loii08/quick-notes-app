@@ -188,10 +188,23 @@ const App: React.FC = () => {
 
   // --- ACTIONS ---
   const showToast = (message: string, type: ToastType = 'success') => {
-    const id = generateId();
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+    const newToast: ToastMessage = { id: generateId(), message, type, isClosing: false };
+    setToasts(prev => [...prev, newToast]);
+
+    // Set a timeout to start the closing animation
+    setTimeout(() => {
+      setToasts(prev => prev.map(t => t.id === newToast.id ? { ...t, isClosing: true } : t));
+      // Set another timeout to actually remove the toast from the array
+      setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.id !== newToast.id));
+      }, 300); // This should match the exit animation duration
+    }, 3000);
   };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.map(t => t.id === id ? { ...t, isClosing: true } : t));
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 300);
+  }
 
   // --- DATA MIGRATION ---
   const migrateLocalData = async (uid: string) => {
@@ -900,7 +913,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col font-sans text-textMain dark:text-gray-100 bg-bgPage transition-colors duration-300">
-      <ToastContainer toasts={toasts} />
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
       
       {/* Navbar */}
       <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-primary dark:bg-gray-900/95 backdrop-blur-md shadow-lg py-3' : 'bg-primary dark:bg-gray-900 py-6'}`}>
@@ -909,58 +922,10 @@ const App: React.FC = () => {
             <h1 className={`font-extrabold tracking-tight transition-all duration-300 ${isScrolled ? 'text-xl' : 'text-3xl'}`}>{appName}</h1>
             <div className={`flex items-center gap-2 transition-all duration-300 ${isScrolled ? 'h-0 opacity-0' : 'h-auto opacity-70'}`}>
               <span className="text-textOnPrimary dark:text-gray-400 font-light text-sm">{appSubtitle}</span>
-              {isFirebaseReady && user && (
-                 <div className="flex items-center gap-2">
-                    {!isOnline && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded border bg-red-400/20 border-red-400/40 text-red-600 dark:text-red-300 flex items-center gap-1">
-                        Offline
-                      </span>
-                    )}
-                    {isOnline && (
-                       <span className="text-[10px] px-1.5 py-0.5 rounded border bg-green-400/20 border-green-400/40 text-green-700 dark:text-green-300 flex items-center gap-1">
-                        Cloud Sync On
-                      </span>
-                    )}
-                    
-                    {syncStatus === 'syncing' && (
-                        <span className="text-[10px] text-textOnPrimary dark:text-indigo-200 animate-pulse flex items-center gap-1">
-                           <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                           Syncing...
-                        </span>
-                    )}
-                    {syncStatus === 'error' && (
-                        <span className="text-[10px] text-red-500 flex items-center gap-1">
-                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                           Sync Error
-                        </span>
-                    )}
-                     {syncStatus === 'idle' && isOnline && (
-                        <span className="text-[10px] text-textOnPrimary dark:text-indigo-200 opacity-60">Synced</span>
-                    )}
-                 </div>
-              )}
-              {isFirebaseReady && !user && (
-                 <span className="text-[10px] px-1.5 py-0.5 rounded border border-textOnPrimary/20 text-textOnPrimary dark:text-indigo-100">
-                  Local Mode
-                </span>
-              )}
             </div>
           </div>
           
           <div className="flex items-center gap-3">
-            {/* Dark Mode Toggle */}
-            <button 
-              onClick={toggleDarkMode}
-              className="p-2 text-textOnPrimary dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors"
-              title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
-            >
-              {darkMode ? (
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-              ) : (
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
-              )}
-            </button>
-
             {/* User Menu */}
             <div className="relative" ref={menuRef}>
               <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 text-textOnPrimary dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors flex items-center gap-2">
@@ -981,6 +946,49 @@ const App: React.FC = () => {
                           <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</div>
                       </div>
                   )}
+                  {isFirebaseReady && (
+                    <div className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                      {!user ? (
+                        <>
+                          <span className="w-2 h-2 rounded-full bg-gray-400"></span>
+                          <span>Local Mode</span>
+                        </>
+                      ) : !isOnline ? (
+                        <>
+                          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                          <span>Offline</span>
+                        </>
+                      ) : syncStatus === 'syncing' ? (
+                        <>
+                          <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span>
+                          <span>Syncing...</span>
+                        </>
+                      ) : syncStatus === 'error' ? (
+                        <>
+                          <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                          <span>Sync Error</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                          <span>Synced</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <button onClick={toggleDarkMode} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
+                    {darkMode ? (
+                      <>
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                        Light Mode
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+                        Dark Mode
+                      </>
+                    )}
+                  </button>
                   <button onClick={() => { setShowSettings(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
                     <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                     Settings
@@ -1006,8 +1014,8 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 pt-32 max-w-3xl flex-1">
-        {/* Category Navigation (Sticky) */}
-        <div className={`z-30 flex items-center mb-8 p-1.5 backdrop-blur-md rounded-full border border-borderLight/50 shadow-sm transition-all duration-500 ease-in-out origin-top sticky top-[60px] w-full
+        {/* Category Navigation (Sticky) - Increased top value to prevent overlap */}
+        <div className={`z-30 flex items-center mb-8 p-1.5 backdrop-blur-md rounded-full border border-borderLight/50 shadow-sm transition-all duration-500 ease-in-out origin-top sticky top-[72px] w-full
           ${isScrolled 
             ? "bg-white/90 dark:bg-gray-800/90 shadow-lg border-white/10 dark:border-gray-700" 
             : "bg-white/50 dark:bg-gray-800/30"
@@ -1135,12 +1143,27 @@ const App: React.FC = () => {
 
       {/* Footer */}
       <footer className="mt-auto bg-surface dark:bg-gray-900 text-gray-500 dark:text-gray-400 py-6 text-center text-xs border-t border-borderLight dark:border-gray-800">
-        <div className="flex justify-center gap-4 mb-2">
-          <a href="#" className="hover:text-textMain dark:hover:text-indigo-400 transition-colors font-medium">Privacy</a>
-          <a href="#" className="hover:text-textMain dark:hover:text-indigo-400 transition-colors font-medium">Terms</a>
-          <a href="#" className="hover:text-textMain dark:hover:text-indigo-400 transition-colors font-medium">Support</a>
+        <div className="flex justify-center gap-6 mb-3">
+          {/* LinkedIn */}
+          <a href="https://www.linkedin.com/in/kenneth-irvin-butad-479b4b26b/" target="_blank" rel="noopener noreferrer" title="LinkedIn" className="hover:text-textMain dark:hover:text-indigo-400 transition-colors">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M4.98 3.5c0 1.381-1.11 2.5-2.48 2.5s-2.48-1.119-2.48-2.5c0-1.38 1.11-2.5 2.48-2.5s2.48 1.12 2.48 2.5zm.02 4.5h-5v16h5v-16zm7.982 0h-4.968v16h4.969v-8.399c0-4.67 6.029-4.484 6.029 0v8.399h4.988v-10.131c0-7.88-8.922-7.59-11.018-3.714v-2.155z"/>
+            </svg>
+          </a>
+          {/* Portfolio */}
+          <a href="https://kenneth-eta.vercel.app/" target="_blank" rel="noopener noreferrer" title="Portfolio" className="hover:text-textMain dark:hover:text-indigo-400 transition-colors">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v1.5a1.5 1.5 0 01-3 0V12a2 2 0 00-2-2 2 2 0 01-2-2V8.5A1.5 1.5 0 015 7c.667 0 1.167.221 1.652.615C5.42 7.904 4.552 8 4 8c-.141 0-.277.005-.41.015l.742.012z" clipRule="evenodd" />
+            </svg>
+          </a>
+          {/* Gmail */}
+          <a href="mailto:kijbutad08@gmail.com" title="Email" className="hover:text-textMain dark:hover:text-indigo-400 transition-colors">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6zm-2 0l-8 5-8-5h16zm0 12H4V8l8 5 8-5v10z"/>
+            </svg>
+          </a>
         </div>
-        &copy; {new Date().getFullYear()} {appName}. All rights reserved.
+        &copy; {new Date().getFullYear()} Kenneth B. All rights reserved.
       </footer>
 
       {/* Mobile FAB */}
