@@ -43,8 +43,8 @@ const Modal: React.FC<ModalProps> = ({
       
       {/* Modal Content */}
       <div className={`relative bg-surface dark:bg-gray-800 rounded-2xl shadow-2xl w-full ${maxWidth} flex flex-col max-h-[85vh] animate-slide-up overflow-hidden border border-borderLight dark:border-gray-700`}>
-        <div className="flex items-center justify-between p-5 bg-primary">
-          <h3 className="text-xl font-bold text-textOnPrimary">{title}</h3>
+        <div className="flex items-center justify-between p-5 bg-primary" role="dialog" aria-labelledby="modal-title">
+          <h2 id="modal-title" className="text-xl font-bold text-textOnPrimary">{title}</h2>
           <button 
             onClick={onClose}
             className="p-2 text-textOnPrimary/70 hover:text-textOnPrimary hover:bg-white/20 rounded-full transition-colors"

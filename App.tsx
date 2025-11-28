@@ -10,7 +10,6 @@ import SkeletonLoader from './components/SkeletonLoader';
 import LandingPage from './components/LandingPage';
 import LoginModal from './components/LoginModal';
 
-// --- FIREBASE IMPORTS ---
 import { auth, db, googleProvider } from './firebase';
 import { 
   signInWithPopup, 
@@ -31,7 +30,6 @@ import {
   writeBatch
 } from 'firebase/firestore';
 
-// --- UTILS ---
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const getCategoryColor = (str: string) => {
   let hash = 0;
@@ -55,7 +53,6 @@ const getUserInitials = (user: User | null): string => {
   return '?';
 };
 
-// --- DEFAULT DATA ---
 const DEFAULT_CATEGORIES: Category[] = [
   { id: 'general', name: 'General' },
   { id: 'work', name: 'Work' },
@@ -67,9 +64,8 @@ const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
   { id: 'qa2', text: 'Grocery list', categoryId: 'general' },
 ];
 
-// --- THEME CONFIGURATIONS ---
 const THEMES = {
-  default: { // Minimalist B&W
+  default: {
     primary: '#000000',
     primaryDark: '#333333',
     bgPage: '#F5F5F5',
@@ -78,7 +74,7 @@ const THEMES = {
     textOnPrimary: '#FFFFFF',
     darkTextOnPrimary: '#000000'
   },
-  pink: { // Airy Pink (Old Default)
+  pink: {
     primary: '#FFC0CB',
     primaryDark: '#FFB6C1',
     bgPage: '#F7F7F7',
@@ -87,7 +83,7 @@ const THEMES = {
     textOnPrimary: '#3A3A3A',
     darkTextOnPrimary: '#FFFFFF'
   },
-  blue: { // Airy Blue
+  blue: {
     primary: '#BAE6FD', // Sky 200
     primaryDark: '#7DD3FC', // Sky 300
     bgPage: '#F0F9FF', // Sky 50
@@ -96,16 +92,16 @@ const THEMES = {
     textOnPrimary: '#1e293b',
     darkTextOnPrimary: '#FFFFFF'
   },
-  green: { // Airy Green
-    primary: '#BBF7D0', // Green 200
-    primaryDark: '#86EFAC', // Green 300
+  green: {
+    primary: '#4ade80',
+    primaryDark: '#22c55e',
     bgPage: '#F0FDF4', // Green 50
     darkPrimary: '#4ade80',
     darkPrimaryDark: '#22c55e',
-    textOnPrimary: '#064e3b',
+    textOnPrimary: '#052e16',
     darkTextOnPrimary: '#FFFFFF'
   },
-  purple: { // Airy Purple
+  purple: {
     primary: '#E9D5FF', // Purple 200
     primaryDark: '#D8B4FE', // Purple 300
     bgPage: '#FAF5FF', // Purple 50
@@ -117,14 +113,12 @@ const THEMES = {
 };
 
 const App: React.FC = () => {
-  // --- STATE ---
   const [user, setUser] = useState<User | null>(null);
   const [isFirebaseReady, setIsFirebaseReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [isInitialDataLoading, setIsInitialDataLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Initialize State Lazy (Directly from LocalStorage) to prevent overwriting data on mount
   const [notes, setNotes] = useState<Note[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
@@ -149,12 +143,10 @@ const App: React.FC = () => {
     } catch (e) { return DEFAULT_QUICK_ACTIONS; }
   });
 
-  // User Preferences
   const [appName, setAppName] = useState(() => localStorage.getItem('app_name') || "Quick Notes");
   const [appSubtitle, setAppSubtitle] = useState(() => localStorage.getItem('app_subtitle') || "Capture ideas instantly");
   const [appTheme, setAppTheme] = useState<'default' | 'pink' | 'blue' | 'green' | 'purple'>(() => (localStorage.getItem('app_theme') as any) || 'default');
   
-  // Theme State
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -162,7 +154,6 @@ const App: React.FC = () => {
     return false;
   });
 
-  // UI State
   const [currentCategory, setCurrentCategory] = useState<string>('all');
   const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [customDate, setCustomDate] = useState<string>('');
@@ -171,10 +162,8 @@ const App: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   
-  // Single Active Note State
   const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
 
-  // Modal States
   const [showSettings, setShowSettings] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [showQAManager, setShowQAManager] = useState(false);
@@ -182,19 +171,16 @@ const App: React.FC = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   
-  // Login Form State
   const [authName, setAuthName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   
-  // Delete Confirmation States
   const [confirmDeleteNoteId, setConfirmDeleteNoteId] = useState<string | null>(null);
   const [confirmDeleteCategoryId, setConfirmDeleteCategoryId] = useState<string | null>(null);
   const [confirmDeleteQAId, setConfirmDeleteQAId] = useState<string | null>(null);
 
-  // Editing State
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
   const [editCatName, setEditCatName] = useState('');
   
@@ -202,21 +188,17 @@ const App: React.FC = () => {
   const [editQAText, setEditQAText] = useState('');
   const [editQACat, setEditQACat] = useState('general');
 
-  // Refs
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // --- ACTIONS ---
   const showToast = (message: string, type: ToastType = 'success') => {
     const newToast: ToastMessage = { id: generateId(), message, type, isClosing: false };
     setToasts(prev => [...prev, newToast]);
 
-    // Set a timeout to start the closing animation
     setTimeout(() => {
       setToasts(prev => prev.map(t => t.id === newToast.id ? { ...t, isClosing: true } : t));
-      // Set another timeout to actually remove the toast from the array
       setTimeout(() => {
         setToasts(prev => prev.filter(t => t.id !== newToast.id));
-      }, 300); // This should match the exit animation duration
+      }, 300);
     }, 3000);
   };
 
@@ -225,11 +207,9 @@ const App: React.FC = () => {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 300);
   }
 
-  // --- AUTH LISTENER ---
   useEffect(() => {
     if (!auth) {
       console.warn("Auth service not available (Local Mode)");
-      setIsInitialDataLoading(false); // No cloud data to load
       return;
     }
 
@@ -238,7 +218,7 @@ const App: React.FC = () => {
       setIsFirebaseReady(true);
       
       if (!currentUser) {
-        setIsInitialDataLoading(false); // User is logged out, stop loading
+        setIsInitialDataLoading(false);
       }
 
       if (currentUser) {
@@ -246,14 +226,12 @@ const App: React.FC = () => {
         const creationTime = new Date(currentUser.metadata.creationTime || 0).getTime();
         const fiveSecondsAgo = Date.now() - 5000;
 
-        // Only show toast if the sign-in happened in the last 5 seconds
         if (lastSignInTime > fiveSecondsAgo) {
-          const isNewUser = (lastSignInTime - creationTime) < 5000; // Signed in within 5s of creation
+          const isNewUser = (lastSignInTime - creationTime) < 5000;
           const name = currentUser.displayName?.split(' ')[0] || currentUser.email?.split('@')[0] || 'User';
 
           if (isNewUser) {
-            setShowOnboarding(true); // Trigger onboarding for new users
-            // The welcome toast is now part of the onboarding modal.
+            setShowOnboarding(true);
           } else {
             showToast(`Welcome back, ${name}!`);
           }
@@ -263,20 +241,16 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // --- FIRESTORE SYNC (CLOUD MODE) ---
   useEffect(() => {
     if (!user || !db) return; 
 
-    // 1. Sync Notes
     const notesRef = collection(db, `users/${user.uid}/notes`);
     const notesUnsub = onSnapshot(notesRef, (snapshot) => {
-      // This runs on initial load and on any subsequent change
       const cloudNotes = snapshot.docs.map(doc => doc.data() as Note);
       setNotes(cloudNotes);
-      setIsInitialDataLoading(false); // Data has arrived, hide preloader
+      setIsInitialDataLoading(false);
     });
 
-    // 2. Sync Categories
     const catsRef = collection(db, `users/${user.uid}/categories`);
     const catsUnsub = onSnapshot(catsRef, (snapshot) => {
       const cloudCats = snapshot.docs.map(doc => doc.data() as Category);
@@ -285,14 +259,12 @@ const App: React.FC = () => {
       }
     });
 
-    // 3. Sync Quick Actions
     const qaRef = collection(db, `users/${user.uid}/quickActions`);
     const qaUnsub = onSnapshot(qaRef, (snapshot) => {
       const cloudQA = snapshot.docs.map(doc => doc.data() as QuickAction);
       setQuickActions(cloudQA);
     });
 
-    // 4. Sync User Settings
     const settingsRef = doc(db, `users/${user.uid}/settings/general`);
     const settingsUnsub = onSnapshot(settingsRef, (doc) => {
         if (doc.exists()) {
@@ -316,21 +288,18 @@ const App: React.FC = () => {
   useEffect(() => localStorage.setItem('app_subtitle', appSubtitle), [appSubtitle]);
   useEffect(() => localStorage.setItem('app_theme', appTheme), [appTheme]);
 
-  // --- THEME & BACKGROUND EFFECT ---
   useEffect(() => {
-    // If no user is logged in, force the green theme. Otherwise, use the selected theme.
     const currentThemeKey = user ? appTheme : 'green';
     const themeConfig = THEMES[currentThemeKey] || THEMES.default;
     const root = document.documentElement;
 
-    // Apply Theme Colors to CSS Variables
     if (darkMode) {
       root.classList.add('dark');
       localStorage.theme = 'dark';
       root.style.setProperty('--color-primary', themeConfig.darkPrimary || THEMES.default.darkPrimary);
       root.style.setProperty('--color-primary-dark', themeConfig.darkPrimaryDark || THEMES.default.darkPrimaryDark);
       root.style.setProperty('--color-text-on-primary', themeConfig.darkTextOnPrimary || THEMES.default.darkTextOnPrimary);
-      root.style.setProperty('--color-bg-page', '#1f2937'); // Consistent dark background
+      root.style.setProperty('--color-bg-page', '#1f2937');
     } else {
       root.classList.remove('dark');
       localStorage.theme = 'light';
@@ -341,7 +310,6 @@ const App: React.FC = () => {
     }
   }, [darkMode, appTheme, user]);
 
-  // --- EVENT LISTENERS ---
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
     const handleClickOutside = (e: MouseEvent) => {
@@ -364,7 +332,6 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // --- AUTH ACTIONS ---
   const handleGoogleLogin = async () => {
     if (!auth || !googleProvider) {
       showToast("Firebase keys missing. Check configuration.", "error");
@@ -397,7 +364,6 @@ const App: React.FC = () => {
                 await updateProfile(userCredential.user, {
                     displayName: authName
                 });
-                // Force local user update to reflect name
                 setUser({ ...userCredential.user, displayName: authName });
             }
             showToast("Account created successfully!");
@@ -450,13 +416,10 @@ const App: React.FC = () => {
     }
   };
 
-  // --- SETTINGS ACTIONS ---
   const handleSaveSettings = async () => {
-    // Enforce defaults if fields are blank
     const finalAppName = appName.trim() || "Quick Notes";
     const finalAppSubtitle = appSubtitle.trim() || "Capture ideas instantly";
 
-    // Update state immediately for a responsive feel
     setAppName(finalAppName);
     setAppSubtitle(finalAppSubtitle);
 
@@ -482,14 +445,11 @@ const App: React.FC = () => {
     const newMode = !darkMode;
     setDarkMode(newMode);
     
-    // Sync theme change immediately if logged in
     if (user && db) {
         setDoc(doc(db, `users/${user.uid}/settings/general`), { darkMode: newMode }, { merge: true })
             .catch(() => console.error("Failed to sync theme preference"));
     }
   };
-
-  // --- DATA OPERATIONS ---
 
   const handleAddNote = async (content: string) => {
     if (!content.trim()) {
@@ -497,7 +457,6 @@ const App: React.FC = () => {
       return;
     }
     
-    // Explicitly set category to 'general' if current filter is 'all', otherwise use current category
     const categoryId = currentCategory === 'all' ? 'general' : currentCategory;
     
     const newNote: Note = {
@@ -805,7 +764,6 @@ const App: React.FC = () => {
     : categories.find(c => c.id === currentCategory)?.name;
 
   const renderNotes = () => {
-    // 1. Group notes by date
     const groups: { [key: string]: Note[] } = {};
     
     filteredNotes.forEach(note => {
@@ -818,7 +776,6 @@ const App: React.FC = () => {
       groups[dateKey].push(note);
     });
 
-    // 2. Sort keys descending (Latest dates first)
     const sortedDateKeys = Object.keys(groups).sort().reverse();
 
     if (sortedDateKeys.length === 0) {
@@ -829,15 +786,12 @@ const App: React.FC = () => {
       );
     }
 
-    // 3. Render Groups
     return sortedDateKeys.map((dateKey, groupIdx) => {
-      // Sort notes within group by timestamp descending (latest first)
       const notesInGroup = groups[dateKey].sort((a, b) => b.timestamp - a.timestamp);
       const groupDateTimestamp = notesInGroup[0].timestamp;
 
       return (
         <div key={dateKey} className="mb-8 bg-surface dark:bg-gray-800 rounded-2xl shadow-sm border border-borderLight dark:border-gray-700 overflow-hidden animate-slide-up" style={{ animationDelay: `${groupIdx * 50}ms` }}>
-          {/* Card Header: Date */}
           <div className="bg-bgPage dark:bg-gray-900/50 px-5 py-4 border-b border-borderLight dark:border-gray-700 flex items-center justify-between">
             <h3 className="font-bold text-textMain dark:text-gray-100 text-lg tracking-tight">
               {formatHeaderDate(groupDateTimestamp)}
@@ -846,7 +800,6 @@ const App: React.FC = () => {
               {notesInGroup.length} {notesInGroup.length === 1 ? 'Note' : 'Notes'}
             </span>
           </div>
-          {/* List of Notes */}
           <div className="divide-y divide-borderLight dark:divide-gray-700">
             {notesInGroup.map(note => (
               <NoteCard
@@ -867,11 +820,9 @@ const App: React.FC = () => {
     });
   };
 
-  // Show a blank screen until Firebase auth state is ready to prevent UI flashing
   if (!isFirebaseReady) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-bgPage dark:bg-gray-900">
-        {/* This prevents a flash of the landing page for logged-in users */}
       </div>
     );
   }
@@ -880,7 +831,6 @@ const App: React.FC = () => {
     <div className="min-h-screen flex flex-col font-sans text-textMain dark:text-gray-100 bg-bgPage transition-colors duration-300">
       <ToastContainer toasts={toasts} onRemove={removeToast} />
       
-      {/* Navbar */}
       <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled && user ? 'bg-primary dark:bg-gray-900/95 backdrop-blur-md shadow-lg py-3' : 'bg-primary dark:bg-gray-900 py-6'}`}>
         <div className="container mx-auto px-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -894,7 +844,6 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-3">
-            {/* User Menu */}
             <div className="relative" ref={menuRef}>
               {user ? (
                 <>
@@ -1001,7 +950,6 @@ const App: React.FC = () => {
             <SkeletonLoader />
           ) : (
             <>
-              {/* Category Navigation (Sticky) */}
               <div className={`z-30 flex items-center mb-8 p-1.5 backdrop-blur-md rounded-full border border-borderLight/50 shadow-sm transition-all duration-500 ease-in-out origin-top sticky top-[72px] w-full
                 ${isScrolled 
                   ? "bg-white/90 dark:bg-gray-800/90 shadow-lg border-white/10 dark:border-gray-700" 
@@ -1044,7 +992,6 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Desktop Input Card */}
               <div className="hidden md:block bg-surface dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-borderLight dark:border-gray-700 mb-8 animate-slide-up">
                 <div className="flex gap-4 mb-4">
                   <input 
@@ -1085,9 +1032,7 @@ const App: React.FC = () => {
                 </div>
               </div>
 
-              {/* Date Filter Bar */}
               <div className="flex items-center gap-2 mb-6 w-full">
-                {/* Fixed "All Time" Button */}
                 <button
                    onClick={() => { setFilterMode('all'); setCustomDate(''); }}
                    className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border capitalize transition-all whitespace-nowrap ${filterMode === 'all' ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}
@@ -1095,7 +1040,6 @@ const App: React.FC = () => {
                    All Time
                  </button>
                  
-                 {/* Scrollable Filter Options */}
                  <div className="flex-1 flex gap-2 overflow-x-auto hide-scrollbar px-1">
                     {['today', 'yesterday', 'week', 'month'].map(mode => (
                        <button
@@ -1108,7 +1052,6 @@ const App: React.FC = () => {
                     ))}
                  </div>
 
-                 {/* Fixed Date Picker Icon */}
                  <div className="shrink-0 relative">
                     <div className={`p-1.5 rounded-full border transition-all ${filterMode === 'custom' ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}>
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -1122,7 +1065,6 @@ const App: React.FC = () => {
                  </div>
               </div>
 
-              {/* Notes Grid */}
               <div className="animate-fade-in pb-10">
                 {renderNotes()}
               </div>
@@ -1135,9 +1077,6 @@ const App: React.FC = () => {
         </main>
       )}
 
-      {/* --- MODALS --- */}
-
-      {/* Login Modal - Must be available even when logged out */}
       <LoginModal
         isOpen={showLoginModal}
         onClose={() => { 
@@ -1145,7 +1084,7 @@ const App: React.FC = () => {
           setAuthEmail(''); 
           setAuthPassword(''); 
           setAuthName('');
-          setIsSignUp(false); // Always reset to Sign In form on close
+          setIsSignUp(false);
         }}
         onGoogleLogin={handleGoogleLogin}
         onEmailAuth={handleEmailAuth}
@@ -1161,16 +1100,13 @@ const App: React.FC = () => {
         authLoading={authLoading}
       />
 
-      {/* Modals that require a logged-in user */}
       {user && (
         <>
-          {/* Onboarding Modal for New Users */}
           <OnboardingModal 
             isOpen={showOnboarding}
             onClose={() => setShowOnboarding(false)}
           />
 
-          {/* Settings Modal */}
           <Modal isOpen={showSettings} onClose={() => setShowSettings(false)} title="App Settings">
             <div className="flex flex-col gap-4">
               <div>
@@ -1263,7 +1199,6 @@ const App: React.FC = () => {
             </div>
           </Modal>
 
-          {/* Category Manager Modal */}
           <Modal isOpen={showCategoryManager} onClose={() => setShowCategoryManager(false)} title="Manage Categories">
             <div className="flex flex-col gap-4">
               <div className="flex gap-2">
@@ -1324,7 +1259,6 @@ const App: React.FC = () => {
             </div>
           </Modal>
 
-          {/* Mobile Add Modal */}
           <Modal isOpen={showMobileAdd} onClose={() => setShowMobileAdd(false)} title="New Note" footer={
             <button 
               onClick={() => handleAddNote(inputValue)}
@@ -1363,7 +1297,6 @@ const App: React.FC = () => {
             </div>
           </Modal>
 
-          {/* Quick Action Manager Modal */}
           <Modal isOpen={showQAManager} onClose={() => setShowQAManager(false)} title="Manage Quick Actions">
             <div className="flex flex-col gap-4 hide-scrollbar">
               <div className="p-4 bg-primary/10 dark:bg-indigo-900/20 rounded-xl border border-primary/20 dark:border-indigo-900/30">
@@ -1458,7 +1391,6 @@ const App: React.FC = () => {
             </div>
           </Modal>
 
-          {/* Confirmation Modals */}
           <ConfirmationModal
             isOpen={!!confirmDeleteNoteId}
             onClose={() => setConfirmDeleteNoteId(null)}
@@ -1488,22 +1420,18 @@ const App: React.FC = () => {
           />
         </>
       )}
-      {/* Footer */}
       <footer className="bg-surface dark:bg-gray-800 text-gray-500 dark:text-gray-400 py-6 text-center text-xs border-t border-borderLight dark:border-gray-700">
         <div className="flex justify-center gap-6 mb-3">
-          {/* LinkedIn */}
           <a href="https://www.linkedin.com/in/kenneth-irvin-butad-479b4b26b/" target="_blank" rel="noopener noreferrer" title="LinkedIn" className="hover:text-textMain dark:hover:text-indigo-400 transition-colors">
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M4.98 3.5c0 1.381-1.11 2.5-2.48 2.5s-2.48-1.119-2.48-2.5c0-1.38 1.11-2.5 2.48-2.5s2.48 1.12 2.48 2.5zm.02 4.5h-5v16h5v-16zm7.982 0h-4.968v16h4.969v-8.399c0-4.67 6.029-4.484 6.029 0v8.399h4.988v-10.131c0-7.88-8.922-7.59-11.018-3.714v-2.155z"/>
             </svg>
           </a>
-          {/* Portfolio */}
           <a href="https://kenneth-eta.vercel.app/" target="_blank" rel="noopener noreferrer" title="Portfolio" className="hover:text-textMain dark:hover:text-indigo-400 transition-colors">
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v1.5a1.5 1.5 0 01-3 0V12a2 2 0 00-2-2 2 2 0 01-2-2V8.5A1.5 1.5 0 015 7c.667 0 1.167.221 1.652.615C5.42 7.904 4.552 8 4 8c-.141 0-.277.005-.41.015l.742.012z" clipRule="evenodd" />
             </svg>
           </a>
-          {/* Gmail */}
           <a href="mailto:kijbutad08@gmail.com" title="Email" className="hover:text-textMain dark:hover:text-indigo-400 transition-colors">
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6zm-2 0l-8 5-8-5h16zm0 12H4V8l8 5 8-5v10z"/>
@@ -1513,7 +1441,6 @@ const App: React.FC = () => {
         &copy; {new Date().getFullYear()} Kenneth B. All rights reserved.
       </footer>
 
-      {/* Mobile FAB - only shown for logged in users */}
       {user && (
         <button 
           onClick={() => setShowMobileAdd(true)}
@@ -1523,9 +1450,6 @@ const App: React.FC = () => {
           <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
         </button>
       )}
-
-      {/* --- MODALS --- */}
-      {/* ... (all modals remain here) ... */}
 
     </div>
   );
