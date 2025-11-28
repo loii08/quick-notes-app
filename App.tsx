@@ -42,6 +42,19 @@ const getCategoryColor = (str: string) => {
   return `hsl(${hue}, 70%, 60%)`;
 };
 
+const getUserInitials = (user: User | null): string => {
+  if (!user) return '?';
+  if (user.displayName) {
+    const nameParts = user.displayName.split(' ').filter(Boolean);
+    if (nameParts.length > 1) {
+      return `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase();
+    }
+    return nameParts[0][0].toUpperCase();
+  }
+  if (user.email) return user.email[0].toUpperCase();
+  return '?';
+};
+
 // --- DEFAULT DATA ---
 const DEFAULT_CATEGORIES: Category[] = [
   { id: 'general', name: 'General' },
@@ -212,77 +225,6 @@ const App: React.FC = () => {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 300);
   }
 
-  // --- DATA MIGRATION ---
-  const migrateLocalData = async (uid: string) => {
-    if (!db) return;
-    
-    setIsInitialDataLoading(true); // Show loader during migration
-    let hasMigrated = false;
-
-    // 1. Notes
-    const localNotesStr = localStorage.getItem('qn_notes');
-    if (localNotesStr) {
-      try {
-        const localNotes: Note[] = JSON.parse(localNotesStr);
-        if (localNotes.length > 0) {
-          setSyncStatus('syncing');
-          await Promise.all(localNotes.map(n => setDoc(doc(db!, `users/${uid}/notes`, n.id), n, { merge: true })));
-          hasMigrated = true;
-        }
-        localStorage.removeItem('qn_notes');
-      } catch(e) { console.error("Error migrating notes", e); }
-    }
-
-    // 2. Categories
-    const localCatsStr = localStorage.getItem('qn_cats');
-    if (localCatsStr) {
-      try {
-        const localCats: Category[] = JSON.parse(localCatsStr);
-        const catsToSync = localCats.filter(c => c.id !== 'general'); 
-        if (catsToSync.length > 0) {
-           setSyncStatus('syncing');
-           await Promise.all(catsToSync.map(c => setDoc(doc(db!, `users/${uid}/categories`, c.id), c, { merge: true })));
-           hasMigrated = true;
-        }
-        localStorage.removeItem('qn_cats');
-      } catch(e) { console.error("Error migrating categories", e); }
-    }
-
-    // 3. Quick Actions
-    const localQAStr = localStorage.getItem('qn_qa');
-    if (localQAStr) {
-      try {
-        const localQA: QuickAction[] = JSON.parse(localQAStr);
-        if (localQA.length > 0) {
-            setSyncStatus('syncing');
-            await Promise.all(localQA.map(q => setDoc(doc(db!, `users/${uid}/quickActions`, q.id), q, { merge: true })));
-            hasMigrated = true;
-        }
-        localStorage.removeItem('qn_qa');
-      } catch(e) { console.error("Error migrating QA", e); }
-    }
-
-    // 4. Settings
-    const appNameLocal = localStorage.getItem('app_name');
-    const appSubtitleLocal = localStorage.getItem('app_subtitle');
-    const appThemeLocal = localStorage.getItem('app_theme');
-    
-    if (appNameLocal || appSubtitleLocal || appThemeLocal) {
-        setSyncStatus('syncing');
-        await setDoc(doc(db!, `users/${uid}/settings/general`), {
-            appName: appNameLocal || 'Quick Notes',
-            appSubtitle: appSubtitleLocal || 'Capture ideas instantly',
-            appTheme: appThemeLocal || 'default'
-        }, { merge: true });
-        hasMigrated = true;
-    }
-
-    if (hasMigrated) {
-        setSyncStatus('idle');
-        showToast('Local data migrated');
-    }
-  };
-
   // --- AUTH LISTENER ---
   useEffect(() => {
     if (!auth) {
@@ -315,7 +257,6 @@ const App: React.FC = () => {
           } else {
             showToast(`Welcome back, ${name}!`);
           }
-          migrateLocalData(currentUser.uid);
         }
       }
     });
@@ -371,46 +312,34 @@ const App: React.FC = () => {
     };
   }, [user]);
 
-  // --- LOCAL PERSISTENCE ---
-  useEffect(() => {
-    if (!user) localStorage.setItem('qn_notes', JSON.stringify(notes));
-  }, [notes, user]);
-
-  useEffect(() => {
-    if (!user) localStorage.setItem('qn_cats', JSON.stringify(categories));
-  }, [categories, user]);
-
-  useEffect(() => {
-    if (!user) localStorage.setItem('qn_qa', JSON.stringify(quickActions));
-  }, [quickActions, user]);
-
   useEffect(() => localStorage.setItem('app_name', appName), [appName]);
   useEffect(() => localStorage.setItem('app_subtitle', appSubtitle), [appSubtitle]);
   useEffect(() => localStorage.setItem('app_theme', appTheme), [appTheme]);
 
   // --- THEME & BACKGROUND EFFECT ---
   useEffect(() => {
-    const themeConfig = THEMES[appTheme] || THEMES.default;
+    // If no user is logged in, force the green theme. Otherwise, use the selected theme.
+    const currentThemeKey = user ? appTheme : 'green';
+    const themeConfig = THEMES[currentThemeKey] || THEMES.default;
     const root = document.documentElement;
 
     // Apply Theme Colors to CSS Variables
     if (darkMode) {
       root.classList.add('dark');
       localStorage.theme = 'dark';
-      root.style.setProperty('--color-primary', themeConfig.darkPrimary);
-      root.style.setProperty('--color-primary-dark', themeConfig.darkPrimaryDark);
-      root.style.setProperty('--color-text-on-primary', themeConfig.darkTextOnPrimary);
-      // Keep dark mode bg override from CSS or set specific one
-      root.style.setProperty('--color-bg-page', '#1f2937');
+      root.style.setProperty('--color-primary', themeConfig.darkPrimary || THEMES.default.darkPrimary);
+      root.style.setProperty('--color-primary-dark', themeConfig.darkPrimaryDark || THEMES.default.darkPrimaryDark);
+      root.style.setProperty('--color-text-on-primary', themeConfig.darkTextOnPrimary || THEMES.default.darkTextOnPrimary);
+      root.style.setProperty('--color-bg-page', '#1f2937'); // Consistent dark background
     } else {
       root.classList.remove('dark');
       localStorage.theme = 'light';
-      root.style.setProperty('--color-primary', themeConfig.primary);
-      root.style.setProperty('--color-primary-dark', themeConfig.primaryDark);
-      root.style.setProperty('--color-text-on-primary', themeConfig.textOnPrimary);
-      root.style.setProperty('--color-bg-page', themeConfig.bgPage);
+      root.style.setProperty('--color-primary', themeConfig.primary || THEMES.default.primary);
+      root.style.setProperty('--color-primary-dark', themeConfig.primaryDark || THEMES.default.primaryDark);
+      root.style.setProperty('--color-text-on-primary', themeConfig.textOnPrimary || THEMES.default.textOnPrimary);
+      root.style.setProperty('--color-bg-page', themeConfig.bgPage || THEMES.default.bgPage);
     }
-  }, [darkMode, appTheme]);
+  }, [darkMode, appTheme, user]);
 
   // --- EVENT LISTENERS ---
   useEffect(() => {
@@ -524,12 +453,20 @@ const App: React.FC = () => {
 
   // --- SETTINGS ACTIONS ---
   const handleSaveSettings = async () => {
+    // Enforce defaults if fields are blank
+    const finalAppName = appName.trim() || "Quick Notes";
+    const finalAppSubtitle = appSubtitle.trim() || "Capture ideas instantly";
+
+    // Update state immediately for a responsive feel
+    setAppName(finalAppName);
+    setAppSubtitle(finalAppSubtitle);
+
     if (user && db) {
         setSyncStatus('syncing');
         try {
             await setDoc(doc(db, `users/${user.uid}/settings/general`), {
-                appName,
-                appSubtitle,
+                appName: finalAppName,
+                appSubtitle: finalAppSubtitle,
                 appTheme,
                 darkMode
             }, { merge: true });
@@ -961,13 +898,22 @@ const App: React.FC = () => {
             {/* User Menu */}
             <div className="relative" ref={menuRef}>
               <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 text-textOnPrimary dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors flex items-center gap-2">
-                 {user ? (
-                   <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border-2 border-white/50" />
-                 ) : (
-                   <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center border-2 border-white/50">
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
-                   </div>
-                 )}
+                {user ? (
+                  user.photoURL ? (
+                  <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border-2 border-white/50" />
+                  ) : (
+                    <div 
+                      className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center border-2 border-white/50 font-bold text-sm"
+                      style={{ backgroundColor: getCategoryColor(user.uid) }}
+                    >
+                      {getUserInitials(user) === '?' ? <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg> : getUserInitials(user)}
+                    </div>
+                  )
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center border-2 border-white/50">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
+                  </div>
+                )}
               </button>
               
               {isMenuOpen && (
@@ -1040,9 +986,9 @@ const App: React.FC = () => {
                       Sign Out
                     </button>
                   ) : (
-                    <button onClick={() => { setShowLoginModal(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-primary/20 dark:hover:bg-indigo-900/20 text-textMain dark:text-indigo-400 font-medium flex items-center gap-2">
-                      <svg className="w-4 h-4 text-primaryDark" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" /></svg>
-                      Cloud Sync (Sign In)
+                    <button onClick={() => { setShowLoginModal(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-primary/20 dark:hover:bg-indigo-900/20 text-textMain dark:text-indigo-400 font-semibold flex items-center gap-2">
+                      <svg className="w-4 h-4 text-primaryDark" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                      Sign In / Sign Up
                     </button>
                   )}
                 </div>
@@ -1197,7 +1143,13 @@ const App: React.FC = () => {
       {/* Login Modal - Must be available even when logged out */}
       <LoginModal
         isOpen={showLoginModal}
-        onClose={() => { setShowLoginModal(false); setAuthEmail(''); setAuthPassword(''); setAuthName(''); }}
+        onClose={() => { 
+          setShowLoginModal(false); 
+          setAuthEmail(''); 
+          setAuthPassword(''); 
+          setAuthName('');
+          setIsSignUp(false); // Always reset to Sign In form on close
+        }}
         onGoogleLogin={handleGoogleLogin}
         onEmailAuth={handleEmailAuth}
         isSignUp={isSignUp}
