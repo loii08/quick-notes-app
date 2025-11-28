@@ -1070,7 +1070,7 @@ const App: React.FC = () => {
             />
             <button 
               onClick={() => handleAddNote(inputValue)}
-              className="px-8 bg-primary hover:bg-primaryDark text-textOnPrimary font-bold rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-1 transition-all active:scale-95"
+              className="px-8 bg-primary hover:bg-primaryDark text-textOnPrimary font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-95"
             >
               Add
             </button>
