@@ -43,11 +43,11 @@ const Modal: React.FC<ModalProps> = ({
       
       {/* Modal Content */}
       <div className={`relative bg-surface dark:bg-gray-800 rounded-2xl shadow-2xl w-full ${maxWidth} flex flex-col max-h-[85vh] animate-slide-up overflow-hidden border border-borderLight dark:border-gray-700`}>
-        <div className="flex items-center justify-between p-5 border-b border-borderLight dark:border-gray-700">
-          <h3 className="text-xl font-bold text-textMain dark:text-gray-100">{title}</h3>
+        <div className="flex items-center justify-between p-5 bg-primary">
+          <h3 className="text-xl font-bold text-textOnPrimary">{title}</h3>
           <button 
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-textMain dark:hover:text-gray-200 hover:bg-bgPage dark:hover:bg-gray-700 rounded-full transition-colors"
+            className="p-2 text-textOnPrimary/70 hover:text-textOnPrimary hover:bg-white/20 rounded-full transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
