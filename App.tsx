@@ -5,6 +5,8 @@ import Modal from './components/Modal';
 import ConfirmationModal from './components/ConfirmationModal';
 import NoteCard from './components/NoteCard';
 import ToastContainer from './components/ToastContainer';
+import OnboardingModal from './components/OnboardingModal';
+import SkeletonLoader from './components/SkeletonLoader';
 
 // --- FIREBASE IMPORTS ---
 import { auth, db, googleProvider } from './firebase';
@@ -104,6 +106,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isFirebaseReady, setIsFirebaseReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
+  const [isInitialDataLoading, setIsInitialDataLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   // Initialize State Lazy (Directly from LocalStorage) to prevent overwriting data on mount
@@ -161,6 +164,7 @@ const App: React.FC = () => {
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [showQAManager, setShowQAManager] = useState(false);
   const [showMobileAdd, setShowMobileAdd] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   
   // Login Form State
@@ -210,6 +214,7 @@ const App: React.FC = () => {
   const migrateLocalData = async (uid: string) => {
     if (!db) return;
     
+    setIsInitialDataLoading(true); // Show loader during migration
     let hasMigrated = false;
 
     // 1. Notes
@@ -272,7 +277,7 @@ const App: React.FC = () => {
 
     if (hasMigrated) {
         setSyncStatus('idle');
-        showToast('Local data migrated to cloud');
+        showToast('Local data migrated');
     }
   };
 
@@ -280,6 +285,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!auth) {
       console.warn("Auth service not available (Local Mode)");
+      setIsInitialDataLoading(false); // No cloud data to load
       return;
     }
 
@@ -287,9 +293,28 @@ const App: React.FC = () => {
       setUser(currentUser);
       setIsFirebaseReady(true);
       
+      if (!currentUser) {
+        setIsInitialDataLoading(false); // User is logged out, stop loading
+      }
+
       if (currentUser) {
-        showToast(`Welcome back, ${currentUser.displayName?.split(' ')[0] || currentUser.email?.split('@')[0] || 'User'}!`);
-        migrateLocalData(currentUser.uid);
+        const lastSignInTime = new Date(currentUser.metadata.lastSignInTime || 0).getTime();
+        const creationTime = new Date(currentUser.metadata.creationTime || 0).getTime();
+        const fiveSecondsAgo = Date.now() - 5000;
+
+        // Only show toast if the sign-in happened in the last 5 seconds
+        if (lastSignInTime > fiveSecondsAgo) {
+          const isNewUser = (lastSignInTime - creationTime) < 5000; // Signed in within 5s of creation
+          const name = currentUser.displayName?.split(' ')[0] || currentUser.email?.split('@')[0] || 'User';
+
+          if (isNewUser) {
+            setShowOnboarding(true); // Trigger onboarding for new users
+            // The welcome toast is now part of the onboarding modal.
+          } else {
+            showToast(`Welcome back, ${name}!`);
+          }
+          migrateLocalData(currentUser.uid);
+        }
       }
     });
     return () => unsubscribe();
@@ -302,8 +327,10 @@ const App: React.FC = () => {
     // 1. Sync Notes
     const notesRef = collection(db, `users/${user.uid}/notes`);
     const notesUnsub = onSnapshot(notesRef, (snapshot) => {
+      // This runs on initial load and on any subsequent change
       const cloudNotes = snapshot.docs.map(doc => doc.data() as Note);
       setNotes(cloudNotes);
+      setIsInitialDataLoading(false); // Data has arrived, hide preloader
     });
 
     // 2. Sync Categories
@@ -546,7 +573,6 @@ const App: React.FC = () => {
       setSyncStatus('syncing');
       try {
         await setDoc(doc(db, `users/${user.uid}/notes`, newNote.id), newNote);
-        showToast('Note synced to cloud');
         setSyncStatus('idle');
       } catch (e) {
         showToast('Failed to save to cloud', 'error');
@@ -554,8 +580,8 @@ const App: React.FC = () => {
       }
     } else {
       setNotes(prev => [newNote, ...prev]);
-      showToast('Note added locally');
     }
+    showToast('Note added');
     
     setInputValue('');
     if (showMobileAdd) setShowMobileAdd(false);
@@ -568,7 +594,6 @@ const App: React.FC = () => {
       if (!silent) setSyncStatus('syncing');
       try {
         await setDoc(doc(db, `users/${user.uid}/notes`, id), updatedNote, { merge: true });
-        if (!silent) showToast('Note updated in cloud');
         setSyncStatus('idle');
       } catch (e) {
         if (!silent) showToast('Update failed', 'error');
@@ -576,8 +601,8 @@ const App: React.FC = () => {
       }
     } else {
       setNotes(prev => prev.map(n => n.id === id ? { ...n, content, categoryId, timestamp } : n));
-      if (!silent) showToast('Note updated locally');
     }
+    if (!silent) showToast('Note updated');
   };
 
   const handleDeleteNote = async () => {
@@ -586,7 +611,6 @@ const App: React.FC = () => {
         setSyncStatus('syncing');
         try {
           await deleteDoc(doc(db, `users/${user.uid}/notes`, confirmDeleteNoteId));
-          showToast('Note deleted from cloud');
           setSyncStatus('idle');
         } catch (e) {
           showToast('Delete failed', 'error');
@@ -594,8 +618,8 @@ const App: React.FC = () => {
         }
       } else {
         setNotes(prev => prev.filter(n => n.id !== confirmDeleteNoteId));
-        showToast('Note deleted locally');
       }
+      showToast('Note deleted');
       setConfirmDeleteNoteId(null);
     }
   };
@@ -609,7 +633,6 @@ const App: React.FC = () => {
       setSyncStatus('syncing');
       try {
         await setDoc(doc(db, `users/${user.uid}/categories`, id), newCat);
-        showToast('Category synced');
         setSyncStatus('idle');
       } catch (e) {
         showToast('Failed to add category', 'error');
@@ -617,8 +640,8 @@ const App: React.FC = () => {
       }
     } else {
       setCategories(prev => [...prev, newCat]);
-      showToast('Category added');
     }
+    showToast('Category added');
   };
 
   const startEditCategory = (cat: Category) => {
@@ -633,7 +656,6 @@ const App: React.FC = () => {
         setSyncStatus('syncing');
         try {
           await setDoc(doc(db, `users/${user.uid}/categories`, editingCatId), updatedCat, { merge: true });
-          showToast('Category updated in cloud');
           setSyncStatus('idle');
         } catch (e) {
           showToast('Failed to update category', 'error');
@@ -641,8 +663,8 @@ const App: React.FC = () => {
         }
       } else {
         setCategories(prev => prev.map(c => c.id === editingCatId ? { ...c, name: editCatName } : c));
-        showToast('Category updated');
       }
+      showToast('Category updated');
       setEditingCatId(null);
       setEditCatName('');
     }
@@ -670,7 +692,6 @@ const App: React.FC = () => {
         });
 
         await batch.commit();
-        showToast('Category deleted from cloud');
         setSyncStatus('idle');
       } catch (e) {
         showToast('Failed to delete category', 'error');
@@ -680,8 +701,8 @@ const App: React.FC = () => {
       setCategories(prev => prev.filter(c => c.id !== id));
       setNotes(prev => prev.map(n => n.categoryId === id ? { ...n, categoryId: 'general' } : n));
       setQuickActions(prev => prev.map(q => q.categoryId === id ? { ...q, categoryId: 'general' } : q));
-      showToast('Category deleted');
     }
+    showToast('Category deleted');
 
     if (currentCategory === id) setCurrentCategory('all');
     setConfirmDeleteCategoryId(null);
@@ -695,7 +716,6 @@ const App: React.FC = () => {
       setSyncStatus('syncing');
       try {
         await setDoc(doc(db, `users/${user.uid}/quickActions`, newQA.id), newQA);
-        showToast('Action synced');
         setSyncStatus('idle');
       } catch (e) {
         showToast('Failed to add action', 'error');
@@ -703,8 +723,8 @@ const App: React.FC = () => {
       }
     } else {
       setQuickActions(prev => [...prev, newQA]);
-      showToast('Quick action added');
     }
+    showToast('Quick action added');
   };
 
   const startEditQA = (qa: QuickAction) => {
@@ -720,7 +740,6 @@ const App: React.FC = () => {
         setSyncStatus('syncing');
         try {
           await setDoc(doc(db, `users/${user.uid}/quickActions`, editingQAId), updatedQA, { merge: true });
-          showToast('Action updated in cloud');
           setSyncStatus('idle');
         } catch (e) {
           showToast('Failed to update action', 'error');
@@ -728,8 +747,8 @@ const App: React.FC = () => {
         }
       } else {
         setQuickActions(prev => prev.map(q => q.id === editingQAId ? { ...q, text: editQAText, categoryId: editQACat } : q));
-        showToast('Quick action updated');
       }
+      showToast('Quick action updated');
       setEditingQAId(null);
       setEditQAText('');
       setEditQACat('general');
@@ -746,7 +765,6 @@ const App: React.FC = () => {
       setSyncStatus('syncing');
       try {
         await deleteDoc(doc(db, `users/${user.uid}/quickActions`, confirmDeleteQAId));
-        showToast('Action deleted from cloud');
         setSyncStatus('idle');
       } catch (e) {
         showToast('Failed to delete action', 'error');
@@ -754,8 +772,8 @@ const App: React.FC = () => {
       }
     } else {
       setQuickActions(prev => prev.filter(q => q.id !== confirmDeleteQAId));
-      showToast('Quick action deleted');
     }
+    showToast('Quick action deleted');
     setConfirmDeleteQAId(null);
   };
 
@@ -876,9 +894,9 @@ const App: React.FC = () => {
     // 3. Render Groups
     return sortedDateKeys.map((dateKey, groupIdx) => {
       // Sort notes within group by timestamp descending (latest first)
-      const notesInGroup = groups[dateKey].sort((a,b) => b.timestamp - a.timestamp);
+      const notesInGroup = groups[dateKey].sort((a, b) => b.timestamp - a.timestamp);
       const groupDateTimestamp = notesInGroup[0].timestamp;
-      
+
       return (
         <div key={dateKey} className="mb-8 bg-surface dark:bg-gray-800 rounded-2xl shadow-sm border border-borderLight dark:border-gray-700 overflow-hidden animate-slide-up" style={{ animationDelay: `${groupIdx * 50}ms` }}>
           {/* Card Header: Date */}
@@ -893,9 +911,9 @@ const App: React.FC = () => {
           {/* List of Notes */}
           <div className="divide-y divide-borderLight dark:divide-gray-700">
             {notesInGroup.map(note => (
-              <NoteCard 
-                key={note.id} 
-                note={note} 
+              <NoteCard
+                key={note.id}
+                note={note}
                 categories={categories}
                 categoryColor={getCategoryColor(note.categoryId)}
                 onUpdate={handleUpdateNote}
@@ -907,7 +925,7 @@ const App: React.FC = () => {
             ))}
           </div>
         </div>
-      );
+      )
     });
   };
 
@@ -918,10 +936,13 @@ const App: React.FC = () => {
       {/* Navbar */}
       <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled ? 'bg-primary dark:bg-gray-900/95 backdrop-blur-md shadow-lg py-3' : 'bg-primary dark:bg-gray-900 py-6'}`}>
         <div className="container mx-auto px-4 flex justify-between items-center">
-          <div className="flex flex-col text-textOnPrimary dark:text-white">
-            <h1 className={`font-extrabold tracking-tight transition-all duration-300 ${isScrolled ? 'text-xl' : 'text-3xl'}`}>{appName}</h1>
-            <div className={`flex items-center gap-2 transition-all duration-300 ${isScrolled ? 'h-0 opacity-0' : 'h-auto opacity-70'}`}>
-              <span className="text-textOnPrimary dark:text-gray-400 font-light text-sm">{appSubtitle}</span>
+          <div className="flex items-center gap-3">
+            <img src="/icon.ico" alt="App Icon" className={`rounded-full transition-all duration-300 ${isScrolled ? 'w-8 h-8' : 'w-10 h-10'}`} />
+            <div className="flex flex-col text-textOnPrimary dark:text-white">
+              <h1 className={`font-extrabold tracking-tight transition-all duration-300 ${isScrolled ? 'text-xl' : 'text-3xl'}`}>{appName}</h1>
+              <div className={`flex items-center gap-2 transition-all duration-300 ${isScrolled ? 'h-0 opacity-0' : 'h-auto opacity-70'}`}>
+                <span className="text-textOnPrimary dark:text-gray-400 font-light text-sm">{appSubtitle}</span>
+              </div>
             </div>
           </div>
           
@@ -993,6 +1014,10 @@ const App: React.FC = () => {
                     <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                     Settings
                   </button>
+                  <button onClick={() => { setShowOnboarding(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Show Demo
+                  </button>
                   <div className="border-t border-borderLight dark:border-gray-700 my-1"></div>
                   {user ? (
                     <button onClick={handleLogout} className="w-full text-left px-4 py-2 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 flex items-center gap-2">
@@ -1014,131 +1039,137 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 pt-32 max-w-3xl flex-1">
-        {/* Category Navigation (Sticky) - Increased top value to prevent overlap */}
-        <div className={`z-30 flex items-center mb-8 p-1.5 backdrop-blur-md rounded-full border border-borderLight/50 shadow-sm transition-all duration-500 ease-in-out origin-top sticky top-[72px] w-full
-          ${isScrolled 
-            ? "bg-white/90 dark:bg-gray-800/90 shadow-lg border-white/10 dark:border-gray-700" 
-            : "bg-white/50 dark:bg-gray-800/30"
-          }
-        `}>
-          <div className="flex items-center overflow-x-auto hide-scrollbar gap-2 max-w-full px-4 w-full">
-            <button 
-              onClick={() => setCurrentCategory('all')}
-              className={`rounded-full font-semibold transition-all whitespace-nowrap px-5 py-2 text-sm
-                ${currentCategory === 'all' 
-                  ? 'bg-primary text-textOnPrimary shadow-md' 
-                  : `text-textMain hover:bg-black/5 dark:text-gray-300 dark:hover:bg-white/5 ${isScrolled ? 'text-gray-600 dark:text-gray-300' : 'text-textMain'}`
-                }`}
-            >
-              All
-            </button>
-            <div className={`w-px h-6 mx-2 flex-shrink-0 transition-colors ${isScrolled ? 'bg-gray-300 dark:bg-gray-600' : 'bg-gray-300/50'}`}></div>
-            <div className="flex gap-2 flex-1 overflow-x-auto hide-scrollbar">
-              {categories.filter(c => c.id !== 'general').map(cat => (
+        {isInitialDataLoading ? (
+          <SkeletonLoader />
+        ) : (
+          <>
+            {/* Category Navigation (Sticky) */}
+            <div className={`z-30 flex items-center mb-8 p-1.5 backdrop-blur-md rounded-full border border-borderLight/50 shadow-sm transition-all duration-500 ease-in-out origin-top sticky top-[72px] w-full
+              ${isScrolled 
+                ? "bg-white/90 dark:bg-gray-800/90 shadow-lg border-white/10 dark:border-gray-700" 
+                : "bg-white/50 dark:bg-gray-800/30"
+              }
+            `}>
+              <div className="flex items-center overflow-x-auto hide-scrollbar gap-2 max-w-full px-4 w-full">
                 <button
-                  key={cat.id}
-                  onClick={() => setCurrentCategory(cat.id)}
-                  className={`rounded-full font-medium whitespace-nowrap transition-all px-4 py-2 text-sm
-                    ${currentCategory === cat.id 
+                  onClick={() => setCurrentCategory('all')}
+                  className={`rounded-full font-semibold transition-all whitespace-nowrap px-5 py-2 text-sm
+                    ${currentCategory === 'all' 
                       ? 'bg-primary text-textOnPrimary shadow-md' 
                       : `text-textMain hover:bg-black/5 dark:text-gray-300 dark:hover:bg-white/5 ${isScrolled ? 'text-gray-600 dark:text-gray-300' : 'text-textMain'}`
                     }`}
                 >
-                  {cat.name}
+                  All
                 </button>
-              ))}
-            </div>
-            <button 
-                onClick={() => setShowCategoryManager(true)}
-                className="ml-2 p-2 rounded-full shadow-md hover:scale-105 transition-all z-10 shrink-0 bg-white text-textMain hover:bg-gray-50"
-              >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.532 1.532 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd"/></svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Desktop Input Card */}
-        <div className="hidden md:block bg-surface dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-borderLight dark:border-gray-700 mb-8 animate-slide-up">
-          <div className="flex gap-4 mb-4">
-            <input 
-              type="text" 
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddNote(inputValue)}
-              placeholder={`Add a note to ${activeCategoryName}...`}
-              className="flex-1 p-4 bg-bgPage dark:bg-gray-900 border-2 border-borderLight dark:border-gray-700 rounded-xl focus:outline-none focus:border-primary dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-800 transition-all text-lg text-textMain dark:text-white placeholder-gray-400"
-            />
-            <button 
-              onClick={() => handleAddNote(inputValue)}
-              className="px-8 bg-primary hover:bg-primaryDark text-textOnPrimary font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-95"
-            >
-              Add
-            </button>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Quick:</span>
-            <div className="flex gap-2 flex-wrap">
-              {quickActions
-                .filter(qa => currentCategory === 'all' || qa.categoryId === currentCategory || qa.categoryId === 'general')
-                .map(qa => (
-                  <button 
-                    key={qa.id}
-                    onClick={() => setInputValue(qa.text)}
-                    className="px-3 py-1 bg-gray-100 dark:bg-gray-700 hover:bg-primary/20 dark:hover:bg-indigo-900/30 hover:text-textMain dark:hover:text-indigo-300 border border-transparent rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 transition-colors"
+                <div className={`w-px h-6 mx-2 flex-shrink-0 transition-colors ${isScrolled ? 'bg-gray-300 dark:bg-gray-600' : 'bg-gray-300/50'}`}></div>
+                <div className="flex gap-2 flex-1 overflow-x-auto hide-scrollbar">
+                  {categories.filter(c => c.id !== 'general').map(cat => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setCurrentCategory(cat.id)}
+                      className={`rounded-full font-medium whitespace-nowrap transition-all px-4 py-2 text-sm
+                        ${currentCategory === cat.id 
+                          ? 'bg-primary text-textOnPrimary shadow-md' 
+                          : `text-textMain hover:bg-black/5 dark:text-gray-300 dark:hover:bg-white/5 ${isScrolled ? 'text-gray-600 dark:text-gray-300' : 'text-textMain'}`
+                        }`}
+                    >
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+                <button 
+                    id="category-manager-button" onClick={() => setShowCategoryManager(true)}
+                    className="ml-2 p-2 rounded-full shadow-md hover:scale-105 transition-all z-10 shrink-0 bg-white text-textMain hover:bg-gray-50"
                   >
-                    {qa.text}
-                  </button>
-                ))
-              }
-            </div>
-            <button onClick={() => setShowQAManager(true)} className="ml-auto text-gray-300 hover:text-textMain transition-colors">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/></svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Date Filter Bar */}
-        <div className="flex items-center gap-2 mb-6 w-full">
-          {/* Fixed "All Time" Button */}
-          <button
-             onClick={() => { setFilterMode('all'); setCustomDate(''); }}
-             className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border capitalize transition-all whitespace-nowrap ${filterMode === 'all' ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}
-           >
-             All Time
-           </button>
-           
-           {/* Scrollable Filter Options */}
-           <div className="flex-1 flex gap-2 overflow-x-auto hide-scrollbar px-1">
-              {['today', 'yesterday', 'week', 'month'].map(mode => (
-                 <button
-                   key={mode}
-                   onClick={() => { setFilterMode(mode as FilterMode); setCustomDate(''); }}
-                   className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border capitalize transition-all whitespace-nowrap ${filterMode === mode ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}
-                 >
-                   {mode}
-                 </button>
-              ))}
-           </div>
-
-           {/* Fixed Date Picker Icon */}
-           <div className="shrink-0 relative">
-              <div className={`p-1.5 rounded-full border transition-all ${filterMode === 'custom' ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.532 1.532 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd"/></svg>
+                </button>
               </div>
-              <input 
-                type="date" 
-                value={customDate}
-                onChange={(e) => { setCustomDate(e.target.value); setFilterMode('custom'); }}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              />
-           </div>
-        </div>
+            </div>
 
-        {/* Notes Grid */}
-        <div className="animate-fade-in pb-10">
-          {renderNotes()}
-        </div>
+            {/* Desktop Input Card */}
+            <div className="hidden md:block bg-surface dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-borderLight dark:border-gray-700 mb-8 animate-slide-up">
+              <div className="flex gap-4 mb-4">
+                <input 
+                  type="text" 
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddNote(inputValue)}
+                  placeholder={`Add a note to ${activeCategoryName}...`}
+                  className="flex-1 p-4 bg-bgPage dark:bg-gray-900 border-2 border-borderLight dark:border-gray-700 rounded-xl focus:outline-none focus:border-primary dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-gray-800 transition-all text-lg text-textMain dark:text-white placeholder-gray-400"
+                />
+                <button 
+                  onClick={() => handleAddNote(inputValue)}
+                  className="px-8 bg-primary hover:bg-primaryDark text-textOnPrimary font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-95"
+                >
+                  Add
+                </button>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Quick:</span>
+                <div className="flex gap-2 flex-wrap">
+                  {quickActions
+                    .filter(qa => currentCategory === 'all' || qa.categoryId === currentCategory || qa.categoryId === 'general')
+                    .map(qa => (
+                      <button 
+                        key={qa.id}
+                        onClick={() => setInputValue(qa.text)}
+                        className="px-3 py-1 bg-gray-100 dark:bg-gray-700 hover:bg-primary/20 dark:hover:bg-indigo-900/30 hover:text-textMain dark:hover:text-indigo-300 border border-transparent rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300 transition-colors"
+                      >
+                        {qa.text}
+                      </button>
+                    ))
+                  }
+                </div>
+                <button onClick={() => setShowQAManager(true)} className="ml-auto text-gray-300 hover:text-textMain transition-colors">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd"/></svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Date Filter Bar */}
+            <div className="flex items-center gap-2 mb-6 w-full">
+              {/* Fixed "All Time" Button */}
+              <button
+                 onClick={() => { setFilterMode('all'); setCustomDate(''); }}
+                 className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border capitalize transition-all whitespace-nowrap ${filterMode === 'all' ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}
+               >
+                 All Time
+               </button>
+               
+               {/* Scrollable Filter Options */}
+               <div className="flex-1 flex gap-2 overflow-x-auto hide-scrollbar px-1">
+                  {['today', 'yesterday', 'week', 'month'].map(mode => (
+                     <button
+                       key={mode}
+                       onClick={() => { setFilterMode(mode as FilterMode); setCustomDate(''); }}
+                       className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border capitalize transition-all whitespace-nowrap ${filterMode === mode ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}
+                     >
+                       {mode}
+                     </button>
+                  ))}
+               </div>
+
+               {/* Fixed Date Picker Icon */}
+               <div className="shrink-0 relative">
+                  <div className={`p-1.5 rounded-full border transition-all ${filterMode === 'custom' ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  </div>
+                  <input 
+                    type="date" 
+                    value={customDate}
+                    onChange={(e) => { setCustomDate(e.target.value); setFilterMode('custom'); }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+               </div>
+            </div>
+
+            {/* Notes Grid */}
+            <div className="animate-fade-in pb-10">
+              {renderNotes()}
+            </div>
+          </>
+        )}
       </main>
 
       {/* Footer */}
@@ -1177,6 +1208,12 @@ const App: React.FC = () => {
 
       {/* --- MODALS --- */}
       
+      {/* Onboarding Modal for New Users */}
+      <OnboardingModal 
+        isOpen={showOnboarding}
+        onClose={() => setShowOnboarding(false)}
+      />
+
       {/* Login / Cloud Sync Modal */}
       <Modal isOpen={showLoginModal} onClose={() => { setShowLoginModal(false); setAuthEmail(''); setAuthPassword(''); setAuthName(''); }} title="Enable Cloud Sync">
         <div className="flex flex-col gap-4 py-2">
