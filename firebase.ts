@@ -3,14 +3,17 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 
+const meta = import.meta as any;
+const env = meta && meta.env ? meta.env : {};
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_API_KEY,
-  authDomain: import.meta.env.VITE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_APP_ID,
-  measurementId: import.meta.env.VITE_MEASUREMENT_ID
+  apiKey: env.VITE_API_KEY,
+  authDomain: env.VITE_AUTH_DOMAIN,
+  projectId: env.VITE_PROJECT_ID,
+  storageBucket: env.VITE_STORAGE_BUCKET,
+  messagingSenderId: env.VITE_MESSAGING_SENDER_ID,
+  appId: env.VITE_APP_ID,
+  measurementId: env.VITE_MEASUREMENT_ID
 };
 
 let app;
@@ -19,24 +22,23 @@ let db: Firestore | null = null;
 let googleProvider: GoogleAuthProvider | null = null;
 
 try {
-  // Prevent multiple initializations in dev hot-reload
-  if (!getApps().length) {
-    app = initializeApp(firebaseConfig);
-  } else {
-    app = getApp();
-  }
+   if (firebaseConfig.apiKey) {
+       if (!getApps().length) {
+        app = initializeApp(firebaseConfig);
+      } else {
+        app = getApp();
+      }
 
-  // Try to initialize services. 
-  // If the environment (like specific online editors) doesn't support the ESM build correctly, 
-  // getAuth might throw "Component auth has not been registered yet".
-  auth = getAuth(app);
-  db = getFirestore(app);
-  googleProvider = new GoogleAuthProvider();
-  
-  console.log("Firebase initialized successfully");
+      auth = getAuth(app);
+      db = getFirestore(app);
+      googleProvider = new GoogleAuthProvider();
+      
+      console.log("Firebase initialized successfully");
+  } else {
+      console.warn("Firebase configuration not found. App running in Local Mode.");
+  }
 } catch (error) {
   console.warn("Firebase initialization failed. The app will run in Local Mode.", error);
-  // We leave auth/db/provider as null. App.tsx must handle this.
-}
+  }
 
 export { auth, db, googleProvider };
