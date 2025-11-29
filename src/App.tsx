@@ -20,6 +20,7 @@ import {
   sendPasswordResetEmail,
   updateProfile
 } from 'firebase/auth';
+import { setPersistence, browserLocalPersistence, browserSessionPersistence } from 'firebase/auth';
 import { 
   collection, 
   onSnapshot, 
@@ -173,6 +174,7 @@ const App: React.FC = () => {
   const [authName, setAuthName] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [isSignUp, setIsSignUp] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   
@@ -340,6 +342,8 @@ const App: React.FC = () => {
       return;
     }
     try {
+      // set persistence according to user's choice
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
       await signInWithPopup(auth, googleProvider);
       setShowLoginModal(false);
     } catch (error) {
@@ -360,6 +364,8 @@ const App: React.FC = () => {
     
     setAuthLoading(true);
     try {
+      // set persistence according to user's choice
+      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
         if (isSignUp) {
             const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
             if (authName) {
@@ -1096,6 +1102,8 @@ const App: React.FC = () => {
         }}
         onGoogleLogin={handleGoogleLogin}
         onEmailAuth={handleEmailAuth}
+        rememberMe={rememberMe}
+        setRememberMe={setRememberMe}
         isSignUp={isSignUp}
         setIsSignUp={setIsSignUp}
         authName={authName}

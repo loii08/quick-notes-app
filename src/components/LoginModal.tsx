@@ -5,6 +5,8 @@ interface LoginModalProps {
   onClose: () => void;
   onGoogleLogin: () => void;
   onEmailAuth: () => void;
+  rememberMe: boolean;
+  setRememberMe: (v: boolean) => void;
   isSignUp: boolean;
   setIsSignUp: (isSignUp: boolean) => void;
   authName: string;
@@ -18,7 +20,7 @@ interface LoginModalProps {
 }
 
 const LoginModal: React.FC<LoginModalProps> = ({
-  isOpen, onClose, onGoogleLogin, onEmailAuth, isSignUp, setIsSignUp,
+  isOpen, onClose, onGoogleLogin, onEmailAuth, rememberMe, setRememberMe, isSignUp, setIsSignUp,
   authName, setAuthName, authEmail, setAuthEmail, authPassword, setAuthPassword,
   onForgotPassword, authLoading
 }) => {
@@ -161,9 +163,15 @@ const LoginModal: React.FC<LoginModalProps> = ({
 
             {/* Footer Options */}
             <div className="flex justify-between items-center text-sm">
-              <button onClick={onForgotPassword} className="text-green-600 hover:text-green-800 text-xs">
-                Forgot Password?
-              </button>
+              <div className="flex items-center gap-3">
+                <label className="inline-flex items-center text-xs">
+                  <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} className="mr-2" />
+                  Remember me
+                </label>
+                <button onClick={onForgotPassword} className="text-green-600 hover:text-green-800 text-xs">
+                  Forgot Password?
+                </button>
+              </div>
               <div className="flex text-xs">
                 <span className="text-gray-500 mr-1">{isSignUp ? "Already have an account?" : "Don't have an account?"}</span>
                 <button onClick={() => setIsSignUp(!isSignUp)} className="font-semibold text-green-700 hover:underline">
