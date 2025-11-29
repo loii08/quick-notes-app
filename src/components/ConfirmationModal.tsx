@@ -27,7 +27,6 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title} maxWidth="max-w-lg">
       <div className="flex items-start gap-4">
-        {/* Icon */}
         <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center ${isDestructive ? 'bg-red-100 dark:bg-red-900/30' : 'bg-primary/10 dark:bg-indigo-900/30'}`}>
           {isDestructive ? (
             <svg className="w-6 h-6 text-red-500 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -39,12 +38,10 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
             </svg>
           )}
         </div>
-        {/* Text Content */}
         <div className="flex-grow">
           <p className="text-gray-600 dark:text-gray-300 text-base">{message}</p>
         </div>
       </div>
-      {/* Footer with Buttons */}
       <div className="flex justify-end gap-3 mt-8">
         <button 
           onClick={onClose}

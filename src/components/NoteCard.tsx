@@ -28,7 +28,6 @@ const NoteCard: React.FC<NoteCardProps> = ({
   const [editCategoryId, setEditCategoryId] = useState(note.categoryId);
   
   const [editDate, setEditDate] = useState(() => {
-    // Convert to datetime-local format (YYYY-MM-DDThh:mm)
     const date = new Date(note.timestamp);
     const offset = date.getTimezoneOffset() * 60000;
     return new Date(date.getTime() - offset).toISOString().slice(0, 16);
@@ -39,10 +38,8 @@ const NoteCard: React.FC<NoteCardProps> = ({
   const [historyIndex, setHistoryIndex] = useState(0);
   const isUndoRedoAction = useRef(false);
 
-  // Derived category name for view mode
   const categoryName = categories.find(c => c.id === note.categoryId)?.name || 'General';
 
-  // --- INITIALIZE & SYNC STATE WHEN ACTIVE ---
   useEffect(() => {
     if (isActive) {
       setEditContent(note.content);
@@ -50,49 +47,40 @@ const NoteCard: React.FC<NoteCardProps> = ({
       const date = new Date(note.timestamp);
       const offset = date.getTimezoneOffset() * 60000;
       setEditDate(new Date(date.getTime() - offset).toISOString().slice(0, 16));
-      
-      // Reset history
       setHistory([note.content]);
       setHistoryIndex(0);
       isUndoRedoAction.current = false;
     }
   }, [isActive, note]);
 
-  // --- SAVE ON COLLAPSE LOGIC ---
   const prevActiveRef = useRef(isActive);
   const ignoreSaveRef = useRef(false);
 
   useEffect(() => {
-    // If the card was active and is now inactive (and not because of explicit cancel/done)
     if (prevActiveRef.current && !isActive) {
         if (!ignoreSaveRef.current) {
-            // Logic to check if content changed and save it silently
             if (editContent.trim()) {
                 const newTimestamp = new Date(editDate).getTime();
-                // Simple check to avoid saving if nothing changed
                 if (editContent !== note.content || editCategoryId !== note.categoryId || newTimestamp !== note.timestamp) {
-                    onUpdate(note.id, editContent, editCategoryId, newTimestamp, true); // Silent save
+                    onUpdate(note.id, editContent, editCategoryId, newTimestamp, true);
                 }
             }
         }
-        ignoreSaveRef.current = false; // Reset flag
+        ignoreSaveRef.current = false;
     }
     prevActiveRef.current = isActive;
   }, [isActive, editContent, editCategoryId, editDate, note, onUpdate]);
 
 
-  // Debounced History Capture
   useEffect(() => {
     if (!isActive) return;
 
-    // Skip capture if the change came from an undo/redo action
     if (isUndoRedoAction.current) {
         isUndoRedoAction.current = false;
         return;
     }
 
     const handler = setTimeout(() => {
-        // Only push if content is different from current history head
         if (editContent !== history[historyIndex]) {
             setHistory(prev => {
                 const newHistory = prev.slice(0, historyIndex + 1);
@@ -101,7 +89,7 @@ const NoteCard: React.FC<NoteCardProps> = ({
             });
             setHistoryIndex(prev => prev + 1);
         }
-    }, 700); // 700ms debounce
+    }, 700);
 
     return () => clearTimeout(handler);
   }, [editContent, isActive, history, historyIndex]);
@@ -109,14 +97,14 @@ const NoteCard: React.FC<NoteCardProps> = ({
 
   const handleSave = () => {
     if (!editContent.trim()) return;
-    ignoreSaveRef.current = true; // Prevent the effect from saving again
+    ignoreSaveRef.current = true;
     const newTimestamp = new Date(editDate).getTime();
-    onUpdate(note.id, editContent, editCategoryId, newTimestamp, false); // Manual save (show toast)
-    onDeactivate(); // Close edit mode
+    onUpdate(note.id, editContent, editCategoryId, newTimestamp, false);
+    onDeactivate();
   };
 
   const handleCancel = () => {
-    ignoreSaveRef.current = true; // Prevent auto-save on collapse
+    ignoreSaveRef.current = true;
     onDeactivate();
   };
 
@@ -146,7 +134,6 @@ const NoteCard: React.FC<NoteCardProps> = ({
       style={{ borderLeftColor: categoryColor }}
     >
       <div className="px-5 py-4">
-        {/* Header Metadata: Category | Time */}
         <div className="flex justify-between items-center mb-1.5">
           <span 
             className="text-[11px] font-bold uppercase tracking-wider"
@@ -157,7 +144,6 @@ const NoteCard: React.FC<NoteCardProps> = ({
           <span className="text-[11px] text-gray-400 dark:text-gray-500 font-medium tracking-wide">{timeString}</span>
         </div>
 
-        {/* Content Area */}
         {isActive ? (
           <div className="animate-fade-in mt-2">
             <textarea
@@ -169,7 +155,6 @@ const NoteCard: React.FC<NoteCardProps> = ({
             />
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                {/* Category Picker */}
                 <div className="relative">
                     <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" /></svg>
@@ -183,13 +168,11 @@ const NoteCard: React.FC<NoteCardProps> = ({
                            <option key={c.id} value={c.id}>{c.name}</option>
                        ))}
                     </select>
-                    {/* Custom Arrow */}
                     <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-gray-400">
                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                     </div>
                 </div>
 
-                {/* Date Picker */}
                 <div className="relative">
                     <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -213,7 +196,6 @@ const NoteCard: React.FC<NoteCardProps> = ({
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd"/></svg>
                 </button>
                 
-                {/* Undo / Redo */}
                 <div className="h-4 w-px bg-gray-200 dark:bg-gray-700 mx-1"></div>
                 
                 <button 
@@ -247,7 +229,7 @@ const NoteCard: React.FC<NoteCardProps> = ({
                 className="px-4 py-2 text-xs font-semibold text-textOnPrimary bg-primary hover:bg-primaryDark dark:bg-indigo-600 dark:hover:bg-indigo-700 rounded-lg shadow-sm transition-all hover:shadow-md w-20 flex items-center justify-center"
                 >
                 {syncStatus === 'syncing' && isActive ? (
-                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4}></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                  <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                 ) : "Done"}
                 </button>
               </div>

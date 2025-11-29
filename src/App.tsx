@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Note, Category, QuickAction, FilterMode, ToastMessage, ToastType } from './types';
 import Modal from './components/Modal';
@@ -916,7 +915,7 @@ const App: React.FC = () => {
                         <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                         Settings
                       </button>
-                      <button onClick={() => { setShowOnboarding(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
+                      <button onClick={() => { setShowOnboarding(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-indigo-400 font-semibold flex items-center gap-2">
                         <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         Show Demo
                       </button>
@@ -966,8 +965,7 @@ const App: React.FC = () => {
                       ${currentCategory === 'all' 
                         ? 'bg-primary text-textOnPrimary shadow-md' 
                         : `text-textMain hover:bg-black/5 dark:text-gray-300 dark:hover:bg-white/5 ${isScrolled ? 'text-gray-600 dark:text-gray-300' : 'text-textMain'}`
-                      }`}
-                  >
+                      }`}>
                     All
                   </button>
                   <div className={`w-px h-6 mx-2 flex-shrink-0 transition-colors ${isScrolled ? 'bg-gray-300 dark:bg-gray-600' : 'bg-gray-300/50'}`}></div>
@@ -1358,7 +1356,7 @@ const App: React.FC = () => {
                 <div className="max-h-[250px] overflow-y-auto pr-1 flex flex-col gap-2">
                   {quickActions.length === 0 ? (
                     <div className="text-center py-8 px-4">
-                      <svg className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z" /></svg>
+                      <svg className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M11 4a2 2 0 114 0 2 2 0 00-4 0zm-7 8h14a2 2 0 012 2v3a2 2 0 01-2 2H5a2 2 0 01-2-2v-3a2 2 0 012-2z" /></svg>
                       <h3 className="mt-2 text-sm font-medium text-gray-800 dark:text-gray-200">No Quick Actions</h3>
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Create one above to get started.</p>
                     </div>
@@ -1425,6 +1423,7 @@ const App: React.FC = () => {
             message="This action cannot be undone. Are you sure you want to delete this note?"
             confirmText="Delete"
             isDestructive={true}
+            syncStatus={syncStatus}
           />
           <ConfirmationModal
             isOpen={!!confirmDeleteCategoryId}
@@ -1434,6 +1433,7 @@ const App: React.FC = () => {
             message="Are you sure you want to delete this category? Notes will be moved to 'General'."
             confirmText="Delete"
             isDestructive={true}
+            syncStatus={syncStatus}
           />
           <ConfirmationModal
             isOpen={!!confirmDeleteQAId}
@@ -1443,6 +1443,7 @@ const App: React.FC = () => {
             message="Are you sure you want to delete this quick action?"
             confirmText="Delete"
             isDestructive={true}
+            syncStatus={syncStatus}
           />
         </>
       )}

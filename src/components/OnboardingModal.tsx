@@ -48,7 +48,6 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClose }) =>
     }
   };
 
-  // When the modal closes, reset the step and remove highlights
   const handleClose = () => {
     setStep(0);
     onClose();
@@ -61,7 +60,6 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClose }) =>
         <p className="text-gray-600 dark:text-gray-300 text-base leading-relaxed">{currentStep.message}</p>
       </div>
 
-      {/* Progress Dots */}
       <div className="flex justify-center gap-2 my-6">
         {Array.from({ length: totalSteps }).map((_, index) => (
           <div
@@ -73,7 +71,6 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClose }) =>
         ))}
       </div>
 
-      {/* Footer with Buttons */}
       <div className="flex justify-between items-center mt-4">
         <button
           onClick={handlePrev}

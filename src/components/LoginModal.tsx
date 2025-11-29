@@ -60,7 +60,6 @@ const LoginModal: React.FC<LoginModalProps> = ({
 
   return (
     <div
-      // Position modal near the top on all screen sizes.
       className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-start pt-20 p-4"
       onClick={handleBackdropClick}
       role="dialog"
@@ -68,7 +67,6 @@ const LoginModal: React.FC<LoginModalProps> = ({
       aria-labelledby="modal-title"
     >
       <div
-        // Make modal full-width on mobile, with rounded corners only at the top.
         ref={modalRef}
         tabIndex={-1}
         className="w-full max-w-md flex flex-col gap-6 p-4 md:p-8 bg-white dark:bg-gray-50 rounded-2xl shadow-xl relative outline-none"
@@ -86,7 +84,6 @@ const LoginModal: React.FC<LoginModalProps> = ({
             onClick={onGoogleLogin}
             className="relative overflow-hidden group w-full py-3 bg-green-50 text-green-700 font-semibold rounded-xl flex items-center justify-center gap-3 border border-green-200 shadow-sm hover:bg-green-500 hover:text-white transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-green-400"
           >
-            {/* Shine effect */}
             <span className="absolute top-0 left-[-75%] w-1/2 h-full bg-white/30 transform -skew-x-12 transition-all duration-500 group-hover:left-[125%] pointer-events-none"></span>
             <svg className="relative w-5 h-5 z-10" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/>
