@@ -172,11 +172,17 @@ const App: React.FC = () => {
   const [showLoginModal, setShowLoginModal] = useState(false);
   
   const [authName, setAuthName] = useState('');
-  const [authEmail, setAuthEmail] = useState('');
+  const [rememberMe, setRememberMe] = useState(() => {
+    try { return typeof window !== 'undefined' && localStorage.getItem('qn_remember') === 'true'; } catch { return false; }
+  });
+  const [authEmail, setAuthEmail] = useState(() => {
+    try { return typeof window !== 'undefined' ? (localStorage.getItem('qn_remember_email') || '') : ''; } catch { return ''; }
+  });
+  // For security we do NOT prefill or persist the password in localStorage.
   const [authPassword, setAuthPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
   const [isSignUp, setIsSignUp] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
+  const [authLoadingSource, setAuthLoadingSource] = useState<'google' | 'email' | null>(null);
   
   const [confirmDeleteNoteId, setConfirmDeleteNoteId] = useState<string | null>(null);
   const [confirmDeleteCategoryId, setConfirmDeleteCategoryId] = useState<string | null>(null);
@@ -240,6 +246,15 @@ const App: React.FC = () => {
       }
     });
     return () => unsubscribe();
+  }, []);
+
+  // Migration: remove any previously stored raw password key if present
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && localStorage.getItem('qn_remember_password')) {
+        localStorage.removeItem('qn_remember_password');
+      }
+    } catch (e) {}
   }, []);
 
   useEffect(() => {
@@ -341,14 +356,29 @@ const App: React.FC = () => {
       showToast("Firebase keys missing. Check configuration.", "error");
       return;
     }
+    setAuthLoading(true);
+    setAuthLoadingSource('google');
     try {
       // set persistence according to user's choice
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      // store remembered email if requested (no password available for Google sign-in)
+      try {
+        if (rememberMe && result?.user?.email) {
+          localStorage.setItem('qn_remember', 'true');
+          localStorage.setItem('qn_remember_email', result.user.email || '');
+        } else if (!rememberMe) {
+          localStorage.removeItem('qn_remember');
+          localStorage.removeItem('qn_remember_email');
+        }
+      } catch (e) {}
       setShowLoginModal(false);
     } catch (error) {
       console.error("Login failed", error);
       showToast("Google login failed.", "error");
+    } finally {
+      setAuthLoading(false);
+      setAuthLoadingSource(null);
     }
   };
 
@@ -363,9 +393,10 @@ const App: React.FC = () => {
     }
     
     setAuthLoading(true);
+    setAuthLoadingSource('email');
     try {
-      // set persistence according to user's choice
-      await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
+        // set persistence according to user's choice
+        await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
         if (isSignUp) {
             const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
             if (authName) {
@@ -378,9 +409,23 @@ const App: React.FC = () => {
         } else {
             await signInWithEmailAndPassword(auth, authEmail, authPassword);
         }
+        // persist credentials locally only if user opted in
+        try {
+          if (rememberMe) {
+            // Persist only the email locally. Do NOT store raw passwords.
+            localStorage.setItem('qn_remember', 'true');
+            localStorage.setItem('qn_remember_email', authEmail);
+          } else {
+            localStorage.removeItem('qn_remember');
+            localStorage.removeItem('qn_remember_email');
+          }
+        } catch (e) {}
+
         setShowLoginModal(false);
-        setAuthEmail('');
-        setAuthPassword('');
+        if (!rememberMe) {
+          setAuthEmail('');
+          setAuthPassword('');
+        }
         setAuthName('');
     } catch (error: any) {
         console.error("Auth error", error);
@@ -393,8 +438,21 @@ const App: React.FC = () => {
         showToast(msg, "error");
     } finally {
         setAuthLoading(false);
+        setAuthLoadingSource(null);
     }
   };
+
+  // keep localStorage in sync when rememberMe changes (remove credentials when turned off)
+  useEffect(() => {
+    try {
+      if (!rememberMe) {
+        localStorage.removeItem('qn_remember');
+        localStorage.removeItem('qn_remember_email');
+      } else {
+        localStorage.setItem('qn_remember', 'true');
+      }
+    } catch (e) {}
+  }, [rememberMe]);
 
   const handleForgotPassword = async () => {
     if (!auth) {
@@ -707,7 +765,7 @@ const App: React.FC = () => {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const json = JSON.parse(event.target?.result as string);
         if (Array.isArray(json.notes) && Array.isArray(json.categories)) {
@@ -715,7 +773,41 @@ const App: React.FC = () => {
             setNotes(json.notes);
             setCategories(json.categories);
             if (json.quickActions) setQuickActions(json.quickActions);
-            showToast('Data imported successfully');
+            
+            // If user is logged in, also save to database
+            if (user && db) {
+              setSyncStatus('syncing');
+              try {
+                const batch = writeBatch(db);
+                
+                // Save notes
+                json.notes.forEach((note: Note) => {
+                  batch.set(doc(db, `users/${user.uid}/notes`, note.id), note);
+                });
+                
+                // Save categories
+                json.categories.forEach((cat: Category) => {
+                  batch.set(doc(db, `users/${user.uid}/categories`, cat.id), cat);
+                });
+                
+                // Save quick actions
+                if (json.quickActions) {
+                  json.quickActions.forEach((qa: QuickAction) => {
+                    batch.set(doc(db, `users/${user.uid}/quickActions`, qa.id), qa);
+                  });
+                }
+                
+                await batch.commit();
+                setSyncStatus('idle');
+                showToast('Data imported and synced to database successfully');
+              } catch (dbError) {
+                setSyncStatus('error');
+                showToast('Data imported locally but failed to sync to database', 'error');
+                console.error('Failed to sync import to database', dbError);
+              }
+            } else {
+              showToast('Data imported successfully');
+            }
             setShowSettings(false);
           }
         } else {
@@ -1093,10 +1185,13 @@ const App: React.FC = () => {
 
       <LoginModal
         isOpen={showLoginModal}
-        onClose={() => { 
-          setShowLoginModal(false); 
-          setAuthEmail(''); 
-          setAuthPassword(''); 
+        onClose={() => {
+          setShowLoginModal(false);
+          // clear transient fields only when user didn't ask to remember credentials
+          if (!rememberMe) {
+            setAuthEmail('');
+            setAuthPassword('');
+          }
           setAuthName('');
           setIsSignUp(false);
         }}
@@ -1114,6 +1209,7 @@ const App: React.FC = () => {
         setAuthPassword={setAuthPassword}
         onForgotPassword={handleForgotPassword}
         authLoading={authLoading}
+        authLoadingSource={authLoadingSource}
       />
 
       {user && (
