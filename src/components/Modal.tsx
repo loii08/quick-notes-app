@@ -21,11 +21,17 @@ const Modal: React.FC<ModalProps> = ({
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const previousActiveElement = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+
+  // keep latest onClose in a ref so the effect below doesn't re-run
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   // Lock scroll and handle Escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onCloseRef.current();
     };
 
     if (isOpen) {
@@ -40,7 +46,7 @@ const Modal: React.FC<ModalProps> = ({
       window.removeEventListener('keydown', handleEscape);
       previousActiveElement.current?.focus();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
