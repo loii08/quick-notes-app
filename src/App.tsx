@@ -28,10 +28,12 @@ import {
   onSnapshot, 
   doc, 
   setDoc, 
-  deleteDoc, 
+  deleteDoc,
+  getDoc, 
   writeBatch
 } from 'firebase/firestore';
-
+import { getDocs } from 'firebase/firestore';
+ 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const getCategoryColor = (str: string) => {
   let hash = 0;
@@ -198,6 +200,7 @@ const App: React.FC = () => {
   const [appName, setAppName] = useState(() => localStorage.getItem('app_name') || "Quick Notes");
   const [appSubtitle, setAppSubtitle] = useState(() => localStorage.getItem('app_subtitle') || "Capture ideas instantly");
   const [appTheme, setAppTheme] = useState<keyof typeof THEMES>(() => (localStorage.getItem('app_theme') as keyof typeof THEMES) || 'default');
+  const [settingsLastUpdated, setSettingsLastUpdated] = useState<number>(() => parseInt(localStorage.getItem('qn_settings_updated') || '0', 10));
   
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -468,16 +471,106 @@ const App: React.FC = () => {
     // Check if we just came back online from an offline state
     if (isOnline && !prevIsOnline.current) {
       setShowBackOnlineBanner(true);
+      syncOfflineChanges(); // Automatically sync when connection is restored
+
       const timer = setTimeout(() => {
         setShowBackOnlineBanner(false);
       }, 3000); // Hide the banner after 3 seconds
 
       return () => clearTimeout(timer);
     }
-
     // Update the previous value for the next render
     prevIsOnline.current = isOnline;
   }, [isOnline]);
+
+  const syncOfflineChanges = async () => {
+    if (!user || !db || !isOnline) return;
+
+    showToast('Syncing offline changes...', 'info');
+    setSyncStatus('syncing');
+
+    try {
+      // 1. Get current local data (which includes offline changes)
+      const localNotes: Note[] = JSON.parse(localStorage.getItem('qn_notes') || '[]');
+
+      // 2. Fetch current cloud data once
+      const notesRef = collection(db, `users/${user.uid}/notes`);
+      const settingsRef = doc(db, `users/${user.uid}/settings/general`);
+      const cloudSnapshot = await getDocs(notesRef);
+      const cloudNotesMap = new Map<string, Note>();
+      cloudSnapshot.forEach(doc => {
+        const data = doc.data() as Note;
+        cloudNotesMap.set(data.id, data);
+      });
+
+      const cloudSettingsDoc = await getDoc(settingsRef);
+      const cloudSettings = cloudSettingsDoc.exists() ? cloudSettingsDoc.data() : null;
+
+      const batch = writeBatch(db);
+      let hasChanges = false;
+
+      // 3. Compare and sync settings
+      const localSettingsUpdated = parseInt(localStorage.getItem('qn_settings_updated') || '0', 10);
+      const cloudSettingsUpdated = cloudSettings?.lastUpdated || 0;
+
+      if (localSettingsUpdated > cloudSettingsUpdated) {
+        // Local settings are newer, push to cloud
+        const localSettings = {
+          appName: localStorage.getItem('app_name') || "Quick Notes",
+          appSubtitle: localStorage.getItem('app_subtitle') || "Capture ideas instantly",
+          appTheme: localStorage.getItem('app_theme') || 'default',
+          darkMode: localStorage.theme === 'dark',
+          lastUpdated: localSettingsUpdated
+        };
+        batch.set(settingsRef, localSettings, { merge: true });
+        hasChanges = true;
+      } else if (cloudSettings && cloudSettingsUpdated > localSettingsUpdated) {
+        // Cloud settings are newer, update local state (will be handled by onSnapshot)
+      }
+
+      // 4. Compare and decide what to sync for notes
+      for (const localNote of localNotes) {
+        const cloudNote = cloudNotesMap.get(localNote.id);
+
+        if (localNote.deletedAt) {
+          // This note was deleted offline, delete it from cloud
+          if (cloudNote) { // only delete if it exists in cloud
+            batch.delete(doc(db, `users/${user.uid}/notes`, localNote.id));
+            hasChanges = true;
+          }
+          continue; // Move to next note
+        }
+
+        if (!cloudNote) {
+          // New note created offline, add it to cloud
+          batch.set(doc(db, `users/${user.uid}/notes`, localNote.id), localNote);
+          hasChanges = true;
+        } else if (cloudNote && localNote.timestamp > cloudNote.timestamp) {
+          // Local note is newer, update the cloud
+          batch.set(doc(db, `users/${user.uid}/notes`, localNote.id), localNote, { merge: true });
+          hasChanges = true;
+        }
+      }
+
+      if (hasChanges) {
+        await batch.commit();
+        showToast('Offline changes synced successfully!');
+      } else {
+        showToast('Everything is up to date.', 'info');
+      }
+
+      // After syncing, trigger a re-fetch from onSnapshot by cleaning up local state
+      setNotes(prev => prev.filter(n => !n.deletedAt));
+
+    } catch (error) {
+      console.error("Offline sync failed:", error);
+      showToast('Offline sync failed. Please try again.', 'error');
+      setSyncStatus('error');
+    } finally {
+      setSyncStatus('idle');
+      setLastSyncTime(Date.now());
+    }
+  };
 
   const handleGoogleLogin = async () => {
     if (!auth || !googleProvider) {
@@ -646,6 +739,7 @@ const App: React.FC = () => {
     localStorage.setItem('app_name', finalAppName);
     localStorage.setItem('app_subtitle', finalAppSubtitle);
     localStorage.setItem('app_theme', appTheme);
+    localStorage.setItem('qn_settings_updated', Date.now().toString());
 
     if (user && db) {
       if (isOnline) {
@@ -655,7 +749,8 @@ const App: React.FC = () => {
               appName: finalAppName,
               appSubtitle: finalAppSubtitle,
               appTheme,
-              darkMode
+              darkMode,
+              lastUpdated: Date.now()
           }, { merge: true });
           setSyncStatus('idle');
           setLastSyncTime(Date.now());
@@ -673,7 +768,7 @@ const App: React.FC = () => {
     setDarkMode(newMode);
     
     if (user && db) {
-        setDoc(doc(db, `users/${user.uid}/settings/general`), { darkMode: newMode }, { merge: true })
+        setDoc(doc(db, `users/${user.uid}/settings/general`), { darkMode: newMode, lastUpdated: Date.now() }, { merge: true })
             .catch(() => console.error("Failed to sync theme preference"));
     }
   };
@@ -691,10 +786,13 @@ const App: React.FC = () => {
       content,
       categoryId,
       timestamp: Date.now(),
+      deletedAt: null
     };
     setNotes(prev => [newNote, ...prev]);
+    // Save to local storage immediately for offline persistence
+    localStorage.setItem('qn_notes', JSON.stringify([newNote, ...notes]));
 
-    if (user && db) {
+    if (user && db && isOnline) {
       if (isOnline) {
         setSyncStatus('syncing');
         try {
@@ -714,12 +812,19 @@ const App: React.FC = () => {
   };
 
   const handleUpdateNote = async (id: string, content: string, categoryId: string, timestamp: number, silent: boolean = false) => {
+    if (!isOnline) {
+      showToast('Editing notes is disabled while offline.', 'error');
+      return;
+    }
+
     const updatedNote = { id, content, categoryId, timestamp };
 
     // Optimistically update the UI immediately for a responsive feel.
     setNotes(prev => prev.map(n => n.id === id ? { ...n, content, categoryId, timestamp } : n));
+    // Save to local storage immediately for offline persistence
+    localStorage.setItem('qn_notes', JSON.stringify(notes.map(n => n.id === id ? { ...n, content, categoryId, timestamp } : n)));
     
-    if (user && db) {
+    if (user && db && isOnline) {
       if (isOnline) {
         if (!silent) setSyncStatus('syncing');
         try {
@@ -737,24 +842,27 @@ const App: React.FC = () => {
   const handleDeleteNote = async () => {
     if (!confirmDeleteNoteId) return;
 
-    const noteIdToDelete = confirmDeleteNoteId;
-    // Optimistically remove from UI
-    setNotes(prev => prev.filter(n => n.id !== noteIdToDelete));
-
-    if (user && db) {
-      if (isOnline) {
+    if (isOnline && user && db) {
+      // If online, delete directly from Firestore
+      const noteIdToDelete = confirmDeleteNoteId;
+      try {
         setSyncStatus('syncing');
-        try {
-          await deleteDoc(doc(db, `users/${user.uid}/notes`, noteIdToDelete));
-          setSyncStatus('idle');
-          setLastSyncTime(Date.now());
-        } catch (e) {
-          showToast('Delete failed', 'error');
-          setSyncStatus('error');
-        }
+        await deleteDoc(doc(db, `users/${user.uid}/notes`, noteIdToDelete));
+        setSyncStatus('idle');
+        setLastSyncTime(Date.now());
+        showToast('Note deleted');
+      } catch (e) {
+        showToast('Delete failed', 'error');
+        setSyncStatus('error');
       }
+    } else {
+      // If offline, mark for deletion instead of removing
+      setNotes(prev => prev.map(n => n.id === confirmDeleteNoteId ? { ...n, deletedAt: Date.now() } : n));
+      // Save to local storage immediately for offline persistence
+      localStorage.setItem('qn_notes', JSON.stringify(notes.map(n => n.id === confirmDeleteNoteId ? { ...n, deletedAt: Date.now() } : n)));
+      showToast('Note will be deleted when back online');
     }
-    showToast('Note deleted');
+
     setConfirmDeleteNoteId(null);
   };
 
@@ -762,12 +870,18 @@ const App: React.FC = () => {
     const trimmedName = name.trim();
     if (!trimmedName) return;
 
+    // Check for duplicates (case-insensitive)
+    if (categories.some(cat => cat.name.toLowerCase() === trimmedName.toLowerCase())) {
+      showToast(`Category "${trimmedName}" already exists.`, 'error');
+      return;
+    }
+
     if (!isOnline) {
       showToast('You must be online to add a new category.', 'error');
       return;
     }
     const id = trimmedName.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
-    const newCat = { id, name };
+    const newCat = { id, name: trimmedName };
 
     if (user && db) {
       if (isOnline) {
@@ -792,7 +906,7 @@ const App: React.FC = () => {
 
   const saveEditCategory = async () => {
     if (editingCatId && editCatName.trim()) {
-      const updatedCat = { id: editingCatId, name: editCatName };
+      const updatedCat = { id: editingCatId, name: editCatName.trim() };
       if (user && db) {
         if (isOnline) {
           setSyncStatus('syncing');
@@ -805,8 +919,6 @@ const App: React.FC = () => {
             setSyncStatus('error');
           }
         }
-      } else {
-        setCategories(prev => prev.map(c => c.id === editingCatId ? { ...c, name: editCatName } : c));
       }
       showToast('Category updated');
       setEditingCatId(null);
@@ -815,6 +927,10 @@ const App: React.FC = () => {
   };
 
   const handleDeleteCategory = (id: string) => {
+    if (!isOnline) {
+      showToast('Managing categories is disabled while offline.', 'error');
+      return;
+    }
     if (id === 'general') return;
     setConfirmDeleteCategoryId(id);
   };
@@ -857,6 +973,11 @@ const App: React.FC = () => {
 
   const handleAddQA = async (text: string, categoryId: string) => {
     if (!text.trim()) return;
+    if (!isOnline) {
+      showToast('Adding quick actions is disabled while offline.', 'error');
+      return;
+    }
+
     const newQA = { id: generateId(), text, categoryId };
     setQuickActions(prev => [...prev, newQA]);
     
@@ -883,6 +1004,10 @@ const App: React.FC = () => {
   };
 
   const saveEditQA = async () => {
+    if (!isOnline) {
+      showToast('Editing quick actions is disabled while offline.', 'error');
+      return;
+    }
     if (editingQAId && editQAText.trim()) {
       const updatedQA = { id: editingQAId, text: editQAText, categoryId: editQACat };
       if (user && db) {
@@ -897,8 +1022,6 @@ const App: React.FC = () => {
             setSyncStatus('error');
           }
         }
-      } else {
-        setQuickActions(prev => prev.map(q => q.id === editingQAId ? { ...q, text: editQAText, categoryId: editQACat } : q));
       }
       showToast('Quick action updated');
       setEditingQAId(null);
@@ -908,6 +1031,10 @@ const App: React.FC = () => {
   };
 
   const handleDeleteQA = (id: string) => {
+    if (!isOnline) {
+      showToast('Managing quick actions is disabled while offline.', 'error');
+      return;
+    }
     setConfirmDeleteQAId(id);
   };
 
@@ -1016,7 +1143,8 @@ const App: React.FC = () => {
 
   const filteredNotes = useMemo(() => {
     return notes.filter(note => {
-      if (currentCategory !== 'all' && note.categoryId !== currentCategory) return false;
+      if (note.deletedAt) return false; // Exclude notes marked for deletion
+      if (currentCategory !== 'all' && note.categoryId !== currentCategory) return false;      
       const noteDate = new Date(note.timestamp);
       const today = new Date();
       const cleanDate = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -1105,6 +1233,7 @@ const App: React.FC = () => {
                 isActive={activeNoteId === note.id}
                 onActivate={() => setActiveNoteId(note.id)}
                 onDeactivate={() => setActiveNoteId(null)}
+                isOnline={isOnline}
               />
             ))}
           </div>
@@ -1126,6 +1255,7 @@ const App: React.FC = () => {
     <div className={`min-h-screen flex flex-col font-sans text-textMain dark:text-gray-100 bg-bgPage transition-colors duration-300 ${appLoadingMessage ? 'opacity-0' : 'opacity-100'}`}>
       {showBackOnlineBanner ? (
         <div className="bg-green-500 text-center py-2 text-white font-semibold fixed top-0 w-full z-[100] animate-fade-in">
+          <button onClick={syncOfflineChanges} className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 rounded-md px-2 py-0.5 text-xs">Sync Now</button>
           <div className="flex items-center justify-center gap-2">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
             Back online
@@ -1271,7 +1401,7 @@ const App: React.FC = () => {
             <SkeletonLoader />
           ) : (
             <>
-              <div className={`z-30 flex items-center mb-8 p-1.5 backdrop-blur-md rounded-full border border-borderLight/50 shadow-sm transition-all duration-500 ease-in-out origin-top sticky top-[72px] w-full
+              <div className={`z-30 flex items-center mb-8 p-1.5 backdrop-blur-md rounded-full border border-borderLight/50 shadow-sm transition-all duration-500 ease-in-out origin-top sticky w-full ${(!isOnline || showBackOnlineBanner) ? 'top-[92px]' : 'top-[72px]'}
                 ${isScrolled 
                   ? "bg-white/90 dark:bg-gray-800/90 shadow-lg border-white/10 dark:border-gray-700" 
                   : "bg-white/50 dark:bg-gray-800/30"
@@ -1585,10 +1715,11 @@ const App: React.FC = () => {
                       const input = document.getElementById('new-cat-input') as HTMLInputElement;
                       handleAddCategory(input.value);
                       input.value = '';
+                      if (isOnline) input.value = '';
                   }}
                   disabled={syncStatus === 'syncing'}
-                  className="px-4 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors w-24 flex items-center justify-center"
-                >
+                  className="px-4 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors w-24 flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
+                > 
                   {syncStatus === 'syncing' ? (
                     <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                   ) : "Add"}
@@ -1605,7 +1736,7 @@ const App: React.FC = () => {
                                 className="flex-1 p-1 text-sm border rounded bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
                             />
                             <button onClick={saveEditCategory} disabled={syncStatus === 'syncing'} className="text-xs bg-primary/20 text-textMain px-2 py-1 rounded w-16 h-6 flex items-center justify-center">
-                              {syncStatus === 'syncing' ? (
+                              {syncStatus === 'syncing' ? ( 
                                 <svg className="animate-spin h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                               ) : "Save"}
                             </button>
@@ -1618,10 +1749,10 @@ const App: React.FC = () => {
                     )}
                     {cat.id !== 'general' && (
                       <div className="flex items-center gap-1">
-                         <button onClick={() => startEditCategory(cat)} className="p-1.5 text-gray-400 hover:text-textMain hover:bg-primary/20 dark:hover:bg-indigo-900/30 rounded">
+                         <button onClick={() => startEditCategory(cat)} className="p-1.5 text-gray-400 hover:text-textMain hover:bg-primary/20 dark:hover:bg-indigo-900/30 rounded disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed disabled:hover:bg-transparent" disabled={!isOnline}>
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                          </button>
-                         <button onClick={() => handleDeleteCategory(cat.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded">
+                         <button onClick={() => handleDeleteCategory(cat.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed disabled:hover:bg-transparent">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                          </button>
                       </div>
@@ -1694,10 +1825,11 @@ const App: React.FC = () => {
                               const select = document.getElementById('new-qa-cat') as HTMLSelectElement;
                               handleAddQA(input.value, select.value);
                               input.value = '';
+                              if (isOnline) input.value = '';
                           }}
                           disabled={syncStatus === 'syncing'}
-                          className="px-6 bg-primary text-textOnPrimary font-bold rounded-lg hover:bg-primaryDark transition-colors shadow-sm w-28 flex items-center justify-center"
-                        >
+                          className="px-6 bg-primary text-textOnPrimary font-bold rounded-lg hover:bg-primaryDark transition-colors shadow-sm w-28 flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
+                        > 
                           {syncStatus === 'syncing' ? (
                             <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                           ) : "Create"}
@@ -1735,7 +1867,7 @@ const App: React.FC = () => {
                                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                               </select>
                                             <button onClick={saveEditQA} disabled={syncStatus === 'syncing'} className="text-xs bg-primary/20 text-textMain px-3 rounded font-medium w-16 h-6 flex items-center justify-center">
-                                              {syncStatus === 'syncing' ? (
+                                              {syncStatus === 'syncing' ? ( 
                                                 <svg className="animate-spin h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                                               ) : (
                                                 "Save"
@@ -1752,11 +1884,11 @@ const App: React.FC = () => {
                                 {categories.find(c => c.id === qa.categoryId)?.name || 'Unknown'}
                               </div>
                             </div>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => startEditQA(qa)} className="p-1.5 text-gray-400 hover:text-textMain hover:bg-primary/20 dark:hover:bg-indigo-900/30 rounded transition-colors">
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ">
+                              <button onClick={() => startEditQA(qa)} className="p-1.5 text-gray-400 hover:text-textMain hover:bg-primary/20 dark:hover:bg-indigo-900/30 rounded transition-colors disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed disabled:hover:bg-transparent" disabled={!isOnline}>
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
                               </button>
-                              <button onClick={() => handleDeleteQA(qa.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors">
+                              <button onClick={() => handleDeleteQA(qa.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed disabled:hover:bg-transparent">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                               </button>
                             </div>
