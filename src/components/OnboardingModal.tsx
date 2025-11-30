@@ -54,7 +54,7 @@ const ONBOARDING_STEPS: Step[] = [
     id: 'new-note-modal',
     title: 'New Note Modal',
     message: 'Type your note here. You can also use Quick Actions below to add templates.',
-    placement: 'center',
+    placement: 'right',
     device: 'mobile',
   },
   // Mobile only: Highlight Manage button inside New Note Modal
@@ -328,13 +328,57 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClose }) =>
   const isMobile = window.innerWidth < 768;
   const current = ONBOARDING_STEPS[stepIndex];
 
+  // Confetti effect function
+  const triggerConfetti = () => {
+    const confettiContainer = document.createElement('div');
+    confettiContainer.style.position = 'fixed';
+    confettiContainer.style.top = '0';
+    confettiContainer.style.left = '0';
+    confettiContainer.style.width = '100%';
+    confettiContainer.style.height = '100%';
+    confettiContainer.style.pointerEvents = 'none';
+    confettiContainer.style.zIndex = '20000';
+    document.body.appendChild(confettiContainer);
+
+    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E2'];
+    const confettiPieces = 50;
+
+    for (let i = 0; i < confettiPieces; i++) {
+      const confetti = document.createElement('div');
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const size = Math.random() * 8 + 4; // 4-12px
+      const delay = Math.random() * 0.3;
+      const duration = Math.random() * 1.5 + 2.5; // 2.5-4s
+
+      confetti.style.position = 'fixed';
+      confetti.style.width = size + 'px';
+      confetti.style.height = size + 'px';
+      confetti.style.backgroundColor = color;
+      confetti.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+      confetti.style.left = Math.random() * 100 + '%';
+      confetti.style.top = '-10px';
+      confetti.style.opacity = '1';
+      confetti.style.pointerEvents = 'none';
+      confetti.style.animation = `confettiFall ${duration}s linear ${delay}s forwards`;
+
+      confettiContainer.appendChild(confetti);
+    }
+
+    // Clean up after animation
+    setTimeout(() => {
+      confettiContainer.remove();
+    }, 5000);
+  };
+
   const handleNext = () => {
     const next = skipForwardIndex(stepIndex);
     if (next < totalSteps) {
       isUserNavigatingRef.current = true; // Prevent auto-skip
       setStepIndex(next);
     } else {
-      onClose();
+      // Trigger confetti effect before closing
+      triggerConfetti();
+      setTimeout(() => onClose(), 1000);
     }
   };
 
@@ -488,7 +532,16 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClose }) =>
   }
 
   return (
-    <div ref={overlayRef} className="fixed inset-0 z-[9998] pointer-events-auto">
+    <>
+      <style>{`
+        @keyframes confettiFall {
+          to {
+            transform: translateY(100vh) rotateZ(720deg);
+            opacity: 0;
+          }
+        }
+      `}</style>
+      <div ref={overlayRef} className="fixed inset-0 z-[9998] pointer-events-auto">
       {/* Backdrop with cutout for highlight */}
       <svg className="absolute inset-0 w-full h-full" style={{ pointerEvents: 'auto' }}>
         <defs>
@@ -546,6 +599,7 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClose }) =>
         </div>
       </div>
     </div>
+    </>
   );
 };
 

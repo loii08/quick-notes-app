@@ -87,6 +87,44 @@ const portsToTry = [3003,3001,3000,3002,5173];
       }
     } else {
       console.log('Back button not found');
+    }
+
+    // Continue to the end of the tour to test confetti effect
+    console.log('\n--- Testing tour completion and confetti effect ---');
+    for (let i = 0; i < 10; i++) {
+      const t = await page.$eval('div[role="dialog"] .font-semibold', el => el.textContent.trim()).catch(() => '');
+      if (t === 'Cloud Sync') {
+        console.log('Reached final step:', t);
+        break;
+      }
+      const clickedNext = await page.evaluate(() => {
+        const btns = Array.from(document.querySelectorAll('button'));
+        const b = btns.find(x => x.textContent && (x.textContent.trim() === 'Next' || x.textContent.trim() === 'Finish'));
+        if (b) { b.click(); return true; }
+        return false;
+      });
+      if (clickedNext) { 
+        await new Promise(r => setTimeout(r, 500)); 
+      } else { 
+        break; 
+      }
+    }
+
+    // Click Finish to trigger confetti
+    const finishClicked = await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('button'));
+      const b = btns.find(x => x.textContent && x.textContent.trim() === 'Finish');
+      if (b) { b.click(); return true; }
+      return false;
+    });
+    
+    if (finishClicked) {
+      console.log('✓ Clicked Finish - confetti effect should be displayed!');
+      await new Promise(r => setTimeout(r, 2000)); // Wait for confetti animation
+      const confettiExists = await page.$('div[style*="animation: confettiFall"]') !== null;
+      console.log('Confetti DOM elements created:', confettiExists ? '✓ Yes' : '✗ No (but may have already animated away)');
+    } else {
+      console.log('✗ Finish button not found');
     }    // Mobile test
     const page2 = await browser.newPage();
     page2.on('console', msg => console.log('[Browser Mobile]', msg.type().toUpperCase(), msg.text()));
