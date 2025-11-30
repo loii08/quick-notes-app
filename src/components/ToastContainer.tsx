@@ -9,7 +9,11 @@ interface ToastContainerProps {
 
 const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onRemove }) => {
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-sm px-4 z-[100] flex flex-col items-center gap-3">
+    <div 
+      className="fixed top-6 left-1/2 -translate-x-1/2 w-full max-w-sm px-4 z-[100] flex flex-col items-center gap-3"
+      role="region"
+      aria-label="Notifications"
+    >
       {toasts.map((toast) => (
         <Toast key={toast.id} toast={toast} onRemove={onRemove} />
       ))}
