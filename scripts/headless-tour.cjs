@@ -79,10 +79,11 @@ const portsToTry = [3003,3001,3000,3002,5173];
       await new Promise(r => setTimeout(r, 400));
       const newTitle = await page.$eval('div[role="dialog"] .font-semibold', el => el.textContent.trim());
       console.log('After Back, title is:', newTitle);
-      if (newTitle === 'New Note Modal') {
-        console.log('✓ Back button navigation works correctly!');
+      // On desktop, mobile-only steps (new-note-modal, manage-button) are skipped, so back goes to "Create a Note"
+      if (newTitle === 'Create a Note') {
+        console.log('✓ Back button navigation works correctly (desktop skips mobile-only steps)!');
       } else {
-        console.log('✗ Back button failed: expected "New Note Modal" but got "' + newTitle + '"');
+        console.log('✗ Back button failed: expected "Create a Note" but got "' + newTitle + '"');
       }
     } else {
       console.log('Back button not found');
