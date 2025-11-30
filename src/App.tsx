@@ -156,6 +156,7 @@ const App: React.FC = () => {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [isInitialDataLoading, setIsInitialDataLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [showBackOnlineBanner, setShowBackOnlineBanner] = useState(false);
 
   const [appLoadingMessage, setAppLoadingMessage] = useState<string | null>(null);
   const [notes, setNotes] = useState<Note[]>(() => {
@@ -256,6 +257,7 @@ const App: React.FC = () => {
 
   const menuRef = useRef<HTMLDivElement>(null);
   const loadingStartTime = useRef<number | null>(null);
+  const prevIsOnline = useRef(isOnline);
 
   const showToast = (message: string, type: ToastType = 'success') => {
     const newToast: ToastMessage = { id: generateId(), message, type, isClosing: false };
@@ -462,6 +464,21 @@ const App: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    // Check if we just came back online from an offline state
+    if (isOnline && !prevIsOnline.current) {
+      setShowBackOnlineBanner(true);
+      const timer = setTimeout(() => {
+        setShowBackOnlineBanner(false);
+      }, 3000); // Hide the banner after 3 seconds
+
+      return () => clearTimeout(timer);
+    }
+
+    // Update the previous value for the next render
+    prevIsOnline.current = isOnline;
+  }, [isOnline]);
+
   const handleGoogleLogin = async () => {
     if (!auth || !googleProvider) {
       showToast("Firebase keys missing. Check configuration.", "error");
@@ -621,21 +638,31 @@ const App: React.FC = () => {
 
     setAppName(finalAppName);
     setAppSubtitle(finalAppSubtitle);
+    // Explicitly save to localStorage for immediate offline persistence
+    localStorage.setItem('app_name', finalAppName);
+    localStorage.setItem('app_subtitle', finalAppSubtitle);
+    localStorage.setItem('app_theme', appTheme);
+    // Explicitly save to localStorage for immediate offline persistence
+    localStorage.setItem('app_name', finalAppName);
+    localStorage.setItem('app_subtitle', finalAppSubtitle);
+    localStorage.setItem('app_theme', appTheme);
 
     if (user && db) {
+      if (isOnline) {
         setSyncStatus('syncing');
         try {
-            await setDoc(doc(db, `users/${user.uid}/settings/general`), {
-                appName: finalAppName,
-                appSubtitle: finalAppSubtitle,
-                appTheme,
-                darkMode
-            }, { merge: true });
-            setSyncStatus('idle');
-            setLastSyncTime(Date.now());
+          await setDoc(doc(db, `users/${user.uid}/settings/general`), {
+              appName: finalAppName,
+              appSubtitle: finalAppSubtitle,
+              appTheme,
+              darkMode
+          }, { merge: true });
+          setSyncStatus('idle');
+          setLastSyncTime(Date.now());
         } catch (e) {
-            setSyncStatus('error');
+          setSyncStatus('error');
         }
+      }
     }
     setShowSettings(false);
     showToast('Settings saved');
@@ -668,14 +695,16 @@ const App: React.FC = () => {
     setNotes(prev => [newNote, ...prev]);
 
     if (user && db) {
-      setSyncStatus('syncing');
-      try {
-        await setDoc(doc(db, `users/${user.uid}/notes`, newNote.id), newNote);
-        setSyncStatus('idle');
-        setLastSyncTime(Date.now());
-      } catch (e) {
-        showToast('Failed to save to cloud', 'error');
-        setSyncStatus('error');
+      if (isOnline) {
+        setSyncStatus('syncing');
+        try {
+          await setDoc(doc(db, `users/${user.uid}/notes`, newNote.id), newNote);
+          setSyncStatus('idle');
+          setLastSyncTime(Date.now());
+        } catch (e) {
+          showToast('Failed to save to cloud', 'error');
+          setSyncStatus('error');
+        }
       }
     }
     showToast('Note added');
@@ -686,41 +715,47 @@ const App: React.FC = () => {
 
   const handleUpdateNote = async (id: string, content: string, categoryId: string, timestamp: number, silent: boolean = false) => {
     const updatedNote = { id, content, categoryId, timestamp };
+
+    // Optimistically update the UI immediately for a responsive feel.
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, content, categoryId, timestamp } : n));
     
     if (user && db) {
-      if (!silent) setSyncStatus('syncing');
-      try {
-        await setDoc(doc(db, `users/${user.uid}/notes`, id), updatedNote, { merge: true });
-        setSyncStatus('idle');
-        if (!silent) setLastSyncTime(Date.now());
-      } catch (e) {
-        if (!silent) showToast('Update failed', 'error');
-        setSyncStatus('error');
+      if (isOnline) {
+        if (!silent) setSyncStatus('syncing');
+        try {
+          await setDoc(doc(db, `users/${user.uid}/notes`, id), updatedNote, { merge: true });
+          setSyncStatus('idle');
+          if (!silent) setLastSyncTime(Date.now());
+        } catch (e) {
+          if (!silent) showToast('Update failed', 'error');
+          setSyncStatus('error');
+        }
       }
-    } else {
-      setNotes(prev => prev.map(n => n.id === id ? { ...n, content, categoryId, timestamp } : n));
     }
-    if (!silent) showToast('Note updated');
   };
 
   const handleDeleteNote = async () => {
-    if (confirmDeleteNoteId) {
-      if (user && db) {
+    if (!confirmDeleteNoteId) return;
+
+    const noteIdToDelete = confirmDeleteNoteId;
+    // Optimistically remove from UI
+    setNotes(prev => prev.filter(n => n.id !== noteIdToDelete));
+
+    if (user && db) {
+      if (isOnline) {
         setSyncStatus('syncing');
         try {
-          await deleteDoc(doc(db, `users/${user.uid}/notes`, confirmDeleteNoteId));
+          await deleteDoc(doc(db, `users/${user.uid}/notes`, noteIdToDelete));
           setSyncStatus('idle');
           setLastSyncTime(Date.now());
         } catch (e) {
           showToast('Delete failed', 'error');
           setSyncStatus('error');
         }
-      } else {
-        setNotes(prev => prev.filter(n => n.id !== confirmDeleteNoteId));
       }
-      showToast('Note deleted');
-      setConfirmDeleteNoteId(null);
     }
+    showToast('Note deleted');
+    setConfirmDeleteNoteId(null);
   };
 
   const handleAddCategory = async (name: string) => {
@@ -735,14 +770,16 @@ const App: React.FC = () => {
     const newCat = { id, name };
 
     if (user && db) {
-      setSyncStatus('syncing');
-      try {
-        await setDoc(doc(db, `users/${user.uid}/categories`, id), newCat);
-        setSyncStatus('idle');
-        setLastSyncTime(Date.now());
-      } catch (e) {
-        showToast('Failed to add category', 'error');
-        setSyncStatus('error');
+      if (isOnline) {
+        setSyncStatus('syncing');
+        try {
+          await setDoc(doc(db, `users/${user.uid}/categories`, id), newCat);
+          setSyncStatus('idle');
+          setLastSyncTime(Date.now());
+        } catch (e) {
+          showToast('Failed to add category', 'error');
+          setSyncStatus('error');
+        }
       }
     }
     showToast('Category added');
@@ -757,14 +794,16 @@ const App: React.FC = () => {
     if (editingCatId && editCatName.trim()) {
       const updatedCat = { id: editingCatId, name: editCatName };
       if (user && db) {
-        setSyncStatus('syncing');
-        try {
-          await setDoc(doc(db, `users/${user.uid}/categories`, editingCatId), updatedCat, { merge: true });
-          setSyncStatus('idle');
-          setLastSyncTime(Date.now());
-        } catch (e) {
-          showToast('Failed to update category', 'error');
-          setSyncStatus('error');
+        if (isOnline) {
+          setSyncStatus('syncing');
+          try {
+            await setDoc(doc(db, `users/${user.uid}/categories`, editingCatId), updatedCat, { merge: true });
+            setSyncStatus('idle');
+            setLastSyncTime(Date.now());
+          } catch (e) {
+            showToast('Failed to update category', 'error');
+            setSyncStatus('error');
+          }
         }
       } else {
         setCategories(prev => prev.map(c => c.id === editingCatId ? { ...c, name: editCatName } : c));
@@ -785,23 +824,25 @@ const App: React.FC = () => {
     const id = confirmDeleteCategoryId;
 
     if (user && db) {
-      setSyncStatus('syncing');
-      try {
-        const batch = writeBatch(db);
-        const catRef = doc(db, `users/${user.uid}/categories`, id);
-        batch.delete(catRef);
-        notes.forEach(async n => {
-          if (n.categoryId === id) {
-             await setDoc(doc(db, `users/${user.uid}/notes`, n.id), { ...n, categoryId: 'general' }, { merge: true });
-          }
-        });
+      if (isOnline) {
+        setSyncStatus('syncing');
+        try {
+          const batch = writeBatch(db);
+          const catRef = doc(db, `users/${user.uid}/categories`, id);
+          batch.delete(catRef);
+          notes.forEach(async n => {
+            if (n.categoryId === id) {
+               await setDoc(doc(db, `users/${user.uid}/notes`, n.id), { ...n, categoryId: 'general' }, { merge: true });
+            }
+          });
 
-        await batch.commit();
-        setLastSyncTime(Date.now());
-        setSyncStatus('idle');
-      } catch (e) {
-        showToast('Failed to delete category', 'error');
-        setSyncStatus('error');
+          await batch.commit();
+          setLastSyncTime(Date.now());
+          setSyncStatus('idle');
+        } catch (e) {
+          showToast('Failed to delete category', 'error');
+          setSyncStatus('error');
+        }
       }
     } else {
       setCategories(prev => prev.filter(c => c.id !== id));
@@ -820,14 +861,16 @@ const App: React.FC = () => {
     setQuickActions(prev => [...prev, newQA]);
     
     if (user && db) {
-      setSyncStatus('syncing');
-      try {
-        await setDoc(doc(db, `users/${user.uid}/quickActions`, newQA.id), newQA);
-        setSyncStatus('idle');
-        setLastSyncTime(Date.now());
-      } catch (e) {
-        showToast('Failed to add action', 'error');
-        setSyncStatus('error');
+      if (isOnline) {
+        setSyncStatus('syncing');
+        try {
+          await setDoc(doc(db, `users/${user.uid}/quickActions`, newQA.id), newQA);
+          setSyncStatus('idle');
+          setLastSyncTime(Date.now());
+        } catch (e) {
+          showToast('Failed to add action', 'error');
+          setSyncStatus('error');
+        }
       }
     }
     showToast('Quick action added');
@@ -843,14 +886,16 @@ const App: React.FC = () => {
     if (editingQAId && editQAText.trim()) {
       const updatedQA = { id: editingQAId, text: editQAText, categoryId: editQACat };
       if (user && db) {
-        setSyncStatus('syncing');
-        try {
-          await setDoc(doc(db, `users/${user.uid}/quickActions`, editingQAId), updatedQA, { merge: true });
-          setSyncStatus('idle');
-          setLastSyncTime(Date.now());
-        } catch (e) {
-          showToast('Failed to update action', 'error');
-          setSyncStatus('error');
+        if (isOnline) {
+          setSyncStatus('syncing');
+          try {
+            await setDoc(doc(db, `users/${user.uid}/quickActions`, editingQAId), updatedQA, { merge: true });
+            setSyncStatus('idle');
+            setLastSyncTime(Date.now());
+          } catch (e) {
+            showToast('Failed to update action', 'error');
+            setSyncStatus('error');
+          }
         }
       } else {
         setQuickActions(prev => prev.map(q => q.id === editingQAId ? { ...q, text: editQAText, categoryId: editQACat } : q));
@@ -869,14 +914,16 @@ const App: React.FC = () => {
   const confirmQADeletion = async () => {
     if (!confirmDeleteQAId) return;
     if (user && db) {
-      setSyncStatus('syncing');
-      try {
-        await deleteDoc(doc(db, `users/${user.uid}/quickActions`, confirmDeleteQAId));
-        setSyncStatus('idle');
-        setLastSyncTime(Date.now());
-      } catch (e) {
-        showToast('Failed to delete action', 'error');
-        setSyncStatus('error');
+      if (isOnline) {
+        setSyncStatus('syncing');
+        try {
+          await deleteDoc(doc(db, `users/${user.uid}/quickActions`, confirmDeleteQAId));
+          setSyncStatus('idle');
+          setLastSyncTime(Date.now());
+        } catch (e) {
+          showToast('Failed to delete action', 'error');
+          setSyncStatus('error');
+        }
       }
     } else {
       setQuickActions(prev => prev.filter(q => q.id !== confirmDeleteQAId));
@@ -1077,8 +1124,15 @@ const App: React.FC = () => {
     <>
     {appLoadingMessage && <AppLoader />}
     <div className={`min-h-screen flex flex-col font-sans text-textMain dark:text-gray-100 bg-bgPage transition-colors duration-300 ${appLoadingMessage ? 'opacity-0' : 'opacity-100'}`}>
-      {!isOnline && (
-        <div className="bg-yellow-500 text-center py-2 text-black font-semibold fixed top-0 w-full z-[100] animate-fade-in">
+      {showBackOnlineBanner ? (
+        <div className="bg-green-500 text-center py-2 text-white font-semibold fixed top-0 w-full z-[100] animate-fade-in">
+          <div className="flex items-center justify-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            Back online
+          </div>
+        </div>
+      ) : !isOnline && (
+        <div className="bg-red-500 text-center py-2 text-white font-semibold fixed top-0 w-full z-[100] animate-fade-in">
           <div className="flex items-center justify-center gap-2">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636a9 9 0 010 12.728m-12.728 0a9 9 0 010-12.728m12.728 0L5.636 18.364m0-12.728L18.364 5.636" /></svg>
             You are currently offline.
@@ -1090,7 +1144,7 @@ const App: React.FC = () => {
         <OnboardingModal isOpen={showOnboarding} onClose={() => setShowOnboarding(false)} />
       )}
       
-      <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${!isOnline ? 'mt-9' : ''} ${isScrolled && user ? 'bg-primary dark:bg-gray-900/95 backdrop-blur-md shadow-lg py-3' : 'bg-primary dark:bg-gray-900 py-6'}`}>
+      <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${(!isOnline || showBackOnlineBanner) ? 'mt-9' : ''} ${isScrolled && user ? 'bg-primary dark:bg-gray-900/95 backdrop-blur-md shadow-lg py-3' : 'bg-primary dark:bg-gray-900 py-6'}`}>
         <div className="container mx-auto px-4 flex justify-between items-center">
           <div className="flex items-center gap-3 min-w-0">
             <img src="/icon.ico" alt="App Icon" className={`rounded-full transition-all duration-300 ${isScrolled && user ? 'w-8 h-8' : 'w-10 h-10'}`} />
@@ -1140,10 +1194,17 @@ const App: React.FC = () => {
                             <span>Sync Error</span>
                           </>
                         ) : (
-                          <>
-                            <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                            <span>Synced {formatTimeAgo(lastSyncTime)}</span>
-                          </>
+                          isOnline ? (
+                            <>
+                              <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                              <span>Updated {formatTimeAgo(lastSyncTime)}</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="w-2 h-2 rounded-full bg-gray-400"></span>
+                              <span>Offline Last Update {formatTimeAgo(lastSyncTime)}</span>
+                            </>
+                          )
                         )}
                       </div>
                     </>
@@ -1205,7 +1266,7 @@ const App: React.FC = () => {
       </nav>
 
       {user ? (
-        <main className={`container mx-auto px-4 pt-32 max-w-3xl flex-1 transition-all duration-300 ${!isOnline ? 'mt-9' : ''}`}>
+        <main className={`container mx-auto px-4 pt-32 max-w-3xl flex-1 transition-all duration-300 ${(!isOnline || showBackOnlineBanner) ? 'mt-9' : ''}`}>
           {isInitialDataLoading ? (
             <SkeletonLoader />
           ) : (
@@ -1761,7 +1822,7 @@ const App: React.FC = () => {
         </div>
         &copy; {new Date().getFullYear()} Kenneth B. All rights reserved.
         <div className="mt-2 text-gray-400 dark:text-gray-600">
-          Inspired by and for Chan Li ❤️
+          {'Inspired by and for Chan Li ❤️'}
         </div>
       </footer>
 
