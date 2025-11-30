@@ -7,6 +7,34 @@
   100% { background-position: 100% 0; }
 }
 
+@keyframes bounce-high {
+  0%, 100% {
+    transform: translateY(-60%);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  50% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+.animate-bounce-high {
+  animation: bounce-high 1s infinite;
+}
+.animate-juggle {
+  animation: juggle 1.2s infinite;
+}
+
+@keyframes juggle {
+  0%, 100% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+  50% {
+    transform: translateY(-100%);
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+}
+
 :root {
   --color-primary: #000000;
   --color-primary-dark: #333333;

@@ -8,8 +8,10 @@ import OnboardingModal from './components/OnboardingModal';
 import SkeletonLoader from './components/SkeletonLoader';
 import LandingPage from './components/LandingPage';
 import LoginModal from './components/LoginModal';
+import AppLoader from './components/AppLoader';
+import { InstallButton } from './components/InstallButton';
 
-import { auth, db, googleProvider } from './firebase';
+import { auth, db, googleProvider } from '@/firebase';
 import { 
   signInWithPopup, 
   signOut, 
@@ -109,6 +111,42 @@ const THEMES = {
     darkPrimaryDark: '#9333ea',
     textOnPrimary: '#4c1d95',
     darkTextOnPrimary: '#FFFFFF'
+  },
+  orange: {
+    primary: '#FDBA74', // Orange 300
+    primaryDark: '#FB923C', // Orange 400
+    bgPage: '#FFF7ED', // Orange 50
+    darkPrimary: '#F97316', // Orange 500
+    darkPrimaryDark: '#EA580C', // Orange 600
+    textOnPrimary: '#7C2D12', // Orange 900
+    darkTextOnPrimary: '#FFFFFF'
+  },
+  teal: {
+    primary: '#99F6E4', // Teal 200
+    primaryDark: '#5EEAD4', // Teal 300
+    bgPage: '#F0FDFA', // Teal 50
+    darkPrimary: '#2DD4BF', // Teal 400
+    darkPrimaryDark: '#14B8A6', // Teal 500
+    textOnPrimary: '#134E4A', // Teal 900
+    darkTextOnPrimary: '#FFFFFF'
+  },
+  red: {
+    primary: '#FECACA', // Red 200
+    primaryDark: '#F87171', // Red 400
+    bgPage: '#FEF2F2', // Red 50
+    darkPrimary: '#EF4444', // Red 500
+    darkPrimaryDark: '#DC2626', // Red 600
+    textOnPrimary: '#7F1D1D', // Red 900
+    darkTextOnPrimary: '#FFFFFF'
+  },
+  slate: {
+    primary: '#E2E8F0', // Slate 200
+    primaryDark: '#CBD5E1', // Slate 300
+    bgPage: '#F8FAFC', // Slate 50
+    darkPrimary: '#64748B', // Slate 500
+    darkPrimaryDark: '#475569', // Slate 600
+    textOnPrimary: '#1E293B', // Slate 800
+    darkTextOnPrimary: '#FFFFFF'
   }
 };
 
@@ -119,7 +157,10 @@ const App: React.FC = () => {
   const [isInitialDataLoading, setIsInitialDataLoading] = useState(true);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
+  const [appLoadingMessage, setAppLoadingMessage] = useState<string | null>(null);
   const [notes, setNotes] = useState<Note[]>(() => {
+    // This is a one-time read on component mount.
+    // The actual data will be populated by the useEffect that listens to Firestore.
     if (typeof window === 'undefined') return [];
     try {
       const saved = localStorage.getItem('qn_notes');
@@ -128,6 +169,7 @@ const App: React.FC = () => {
   });
 
   const [categories, setCategories] = useState<Category[]>(() => {
+    // One-time read, will be overwritten by Firestore listener.
     if (typeof window === 'undefined') return DEFAULT_CATEGORIES;
     try {
       const saved = localStorage.getItem('qn_cats');
@@ -136,6 +178,7 @@ const App: React.FC = () => {
   });
 
   const [quickActions, setQuickActions] = useState<QuickAction[]>(() => {
+    // One-time read, will be overwritten by Firestore listener.
     if (typeof window === 'undefined') return DEFAULT_QUICK_ACTIONS;
     try {
       const saved = localStorage.getItem('qn_qa');
@@ -143,9 +186,17 @@ const App: React.FC = () => {
     } catch (e) { return DEFAULT_QUICK_ACTIONS; }
   });
 
+  const [lastSyncTime, setLastSyncTime] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem('qn_last_sync');
+      return saved ? parseInt(saved, 10) : null;
+    } catch {
+      return null;
+    }
+  });
   const [appName, setAppName] = useState(() => localStorage.getItem('app_name') || "Quick Notes");
   const [appSubtitle, setAppSubtitle] = useState(() => localStorage.getItem('app_subtitle') || "Capture ideas instantly");
-  const [appTheme, setAppTheme] = useState<'default' | 'pink' | 'blue' | 'green' | 'purple'>(() => (localStorage.getItem('app_theme') as any) || 'default');
+  const [appTheme, setAppTheme] = useState<keyof typeof THEMES>(() => (localStorage.getItem('app_theme') as keyof typeof THEMES) || 'default');
   
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -204,6 +255,7 @@ const App: React.FC = () => {
   const [editQACat, setEditQACat] = useState('general');
 
   const menuRef = useRef<HTMLDivElement>(null);
+  const loadingStartTime = useRef<number | null>(null);
 
   const showToast = (message: string, type: ToastType = 'success') => {
     const newToast: ToastMessage = { id: generateId(), message, type, isClosing: false };
@@ -221,6 +273,24 @@ const App: React.FC = () => {
     setToasts(prev => prev.map(t => t.id === id ? { ...t, isClosing: true } : t));
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 300);
   }
+
+  const formatTimeAgo = (timestamp: number | null): string => {
+    if (!timestamp) return 'never';
+    const now = Date.now();
+    const seconds = Math.floor((now - timestamp) / 1000);
+
+    if (seconds < 5) return 'just now';
+    if (seconds < 60) return `${seconds}s ago`;
+    
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  };
 
   useEffect(() => {
     if (!auth) {
@@ -271,7 +341,27 @@ const App: React.FC = () => {
     const notesRef = collection(db, `users/${user.uid}/notes`);
     const notesUnsub = onSnapshot(notesRef, (snapshot) => {
       const cloudNotes = snapshot.docs.map(doc => doc.data() as Note);
+      // Update state and save to localStorage for offline use
       setNotes(cloudNotes);
+      try {
+        localStorage.setItem('qn_notes', JSON.stringify(cloudNotes));
+      } catch (e) { console.error('Failed to save notes to localStorage', e); }
+
+      // Ensure loader is visible for at least 5 seconds
+      if (loadingStartTime.current) {
+        // This logic is now only for fresh logins, not refreshes.
+        if (appLoadingMessage) {
+            const elapsedTime = Date.now() - loadingStartTime.current;
+            const remainingTime = 5000 - elapsedTime;
+            if (remainingTime > 0) {
+              setTimeout(() => setAppLoadingMessage(null), remainingTime);
+            } else {
+              setAppLoadingMessage(null);
+            }
+            loadingStartTime.current = null; // Reset timer
+        }
+      }
+
       setIsInitialDataLoading(false);
     });
 
@@ -279,14 +369,22 @@ const App: React.FC = () => {
     const catsUnsub = onSnapshot(catsRef, (snapshot) => {
       const cloudCats = snapshot.docs.map(doc => doc.data() as Category);
       if (cloudCats.length > 0) {
+        // Update state and save to localStorage
         setCategories(cloudCats);
+        try {
+          localStorage.setItem('qn_cats', JSON.stringify(cloudCats));
+        } catch (e) { console.error('Failed to save categories to localStorage', e); }
       }
     });
 
     const qaRef = collection(db, `users/${user.uid}/quickActions`);
     const qaUnsub = onSnapshot(qaRef, (snapshot) => {
       const cloudQA = snapshot.docs.map(doc => doc.data() as QuickAction);
+      // Update state and save to localStorage
       setQuickActions(cloudQA);
+      try {
+        localStorage.setItem('qn_qa', JSON.stringify(cloudQA));
+      } catch (e) { console.error('Failed to save quick actions to localStorage', e); }
     });
 
     const settingsRef = doc(db, `users/${user.uid}/settings/general`);
@@ -311,6 +409,11 @@ const App: React.FC = () => {
   useEffect(() => localStorage.setItem('app_name', appName), [appName]);
   useEffect(() => localStorage.setItem('app_subtitle', appSubtitle), [appSubtitle]);
   useEffect(() => localStorage.setItem('app_theme', appTheme), [appTheme]);
+  useEffect(() => {
+    if (lastSyncTime) {
+      localStorage.setItem('qn_last_sync', lastSyncTime.toString());
+    }
+  }, [lastSyncTime]);
 
   useEffect(() => {
     const isLightModeForced = !user;
@@ -364,6 +467,7 @@ const App: React.FC = () => {
       showToast("Firebase keys missing. Check configuration.", "error");
       return;
     }
+    // Show spinner on the button inside the modal
     setAuthLoading(true);
     setAuthLoadingSource('google');
     try {
@@ -380,12 +484,16 @@ const App: React.FC = () => {
           localStorage.removeItem('qn_remember_email');
         }
       } catch (e) {}
+      // On success, close modal and start the full-screen loader
+      loadingStartTime.current = Date.now();
+      setAppLoadingMessage("Signing in with Google");
       setShowLoginModal(false);
     } catch (error) {
       console.error("Login failed", error);
       showToast("Google login failed.", "error");
+      setAuthLoading(false); // Stop button spinner on failure
     } finally {
-      setAuthLoading(false);
+      // The app loader will be cleared by the data loading effect
       setAuthLoadingSource(null);
     }
   };
@@ -400,6 +508,7 @@ const App: React.FC = () => {
         return;
     }
     
+    // Show spinner on the button inside the modal
     setAuthLoading(true);
     setAuthLoadingSource('email');
     try {
@@ -429,6 +538,9 @@ const App: React.FC = () => {
           }
         } catch (e) {}
 
+        // On success, close modal and start the full-screen loader
+        loadingStartTime.current = Date.now();
+        setAppLoadingMessage(isSignUp ? "Creating your account" : "Signing in");
         setShowLoginModal(false);
         if (!rememberMe) {
           setAuthEmail('');
@@ -444,6 +556,7 @@ const App: React.FC = () => {
         if (error.code === 'auth/weak-password') msg = "Password should be at least 6 characters";
         if (error.code === 'auth/invalid-api-key') msg = "Invalid API Key";
         showToast(msg, "error");
+        setAuthLoading(false); // Stop button spinner on failure
     } finally {
         setAuthLoading(false);
         setAuthLoadingSource(null);
@@ -482,9 +595,21 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     if (!auth) return;
     try {
+      // Start the timer and show the full-screen loader for sign out
+      loadingStartTime.current = Date.now();
+      setAppLoadingMessage("Signing out");
+      setIsMenuOpen(false);
       await signOut(auth);
       setUser(null);
-      window.location.reload(); 
+
+      // Ensure sign-out animation is visible for a minimum duration
+      const elapsedTime = Date.now() - (loadingStartTime.current || Date.now());
+      const remainingTime = 1500 - elapsedTime; // A shorter duration for sign-out feels better
+      if (remainingTime > 0) {
+        setTimeout(() => setAppLoadingMessage(null), remainingTime);
+      } else {
+        setAppLoadingMessage(null);
+      }
     } catch (error) {
       showToast("Logout failed", "error");
     }
@@ -507,6 +632,7 @@ const App: React.FC = () => {
                 darkMode
             }, { merge: true });
             setSyncStatus('idle');
+            setLastSyncTime(Date.now());
         } catch (e) {
             setSyncStatus('error');
         }
@@ -539,18 +665,18 @@ const App: React.FC = () => {
       categoryId,
       timestamp: Date.now(),
     };
+    setNotes(prev => [newNote, ...prev]);
 
     if (user && db) {
       setSyncStatus('syncing');
       try {
         await setDoc(doc(db, `users/${user.uid}/notes`, newNote.id), newNote);
         setSyncStatus('idle');
+        setLastSyncTime(Date.now());
       } catch (e) {
         showToast('Failed to save to cloud', 'error');
         setSyncStatus('error');
       }
-    } else {
-      setNotes(prev => [newNote, ...prev]);
     }
     showToast('Note added');
     
@@ -566,6 +692,7 @@ const App: React.FC = () => {
       try {
         await setDoc(doc(db, `users/${user.uid}/notes`, id), updatedNote, { merge: true });
         setSyncStatus('idle');
+        if (!silent) setLastSyncTime(Date.now());
       } catch (e) {
         if (!silent) showToast('Update failed', 'error');
         setSyncStatus('error');
@@ -583,6 +710,7 @@ const App: React.FC = () => {
         try {
           await deleteDoc(doc(db, `users/${user.uid}/notes`, confirmDeleteNoteId));
           setSyncStatus('idle');
+          setLastSyncTime(Date.now());
         } catch (e) {
           showToast('Delete failed', 'error');
           setSyncStatus('error');
@@ -596,8 +724,14 @@ const App: React.FC = () => {
   };
 
   const handleAddCategory = async (name: string) => {
-    if (!name.trim()) return;
-    const id = name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+
+    if (!isOnline) {
+      showToast('You must be online to add a new category.', 'error');
+      return;
+    }
+    const id = trimmedName.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
     const newCat = { id, name };
 
     if (user && db) {
@@ -605,12 +739,11 @@ const App: React.FC = () => {
       try {
         await setDoc(doc(db, `users/${user.uid}/categories`, id), newCat);
         setSyncStatus('idle');
+        setLastSyncTime(Date.now());
       } catch (e) {
         showToast('Failed to add category', 'error');
         setSyncStatus('error');
       }
-    } else {
-      setCategories(prev => [...prev, newCat]);
     }
     showToast('Category added');
   };
@@ -628,6 +761,7 @@ const App: React.FC = () => {
         try {
           await setDoc(doc(db, `users/${user.uid}/categories`, editingCatId), updatedCat, { merge: true });
           setSyncStatus('idle');
+          setLastSyncTime(Date.now());
         } catch (e) {
           showToast('Failed to update category', 'error');
           setSyncStatus('error');
@@ -663,6 +797,7 @@ const App: React.FC = () => {
         });
 
         await batch.commit();
+        setLastSyncTime(Date.now());
         setSyncStatus('idle');
       } catch (e) {
         showToast('Failed to delete category', 'error');
@@ -682,18 +817,18 @@ const App: React.FC = () => {
   const handleAddQA = async (text: string, categoryId: string) => {
     if (!text.trim()) return;
     const newQA = { id: generateId(), text, categoryId };
+    setQuickActions(prev => [...prev, newQA]);
     
     if (user && db) {
       setSyncStatus('syncing');
       try {
         await setDoc(doc(db, `users/${user.uid}/quickActions`, newQA.id), newQA);
         setSyncStatus('idle');
+        setLastSyncTime(Date.now());
       } catch (e) {
         showToast('Failed to add action', 'error');
         setSyncStatus('error');
       }
-    } else {
-      setQuickActions(prev => [...prev, newQA]);
     }
     showToast('Quick action added');
   };
@@ -712,6 +847,7 @@ const App: React.FC = () => {
         try {
           await setDoc(doc(db, `users/${user.uid}/quickActions`, editingQAId), updatedQA, { merge: true });
           setSyncStatus('idle');
+          setLastSyncTime(Date.now());
         } catch (e) {
           showToast('Failed to update action', 'error');
           setSyncStatus('error');
@@ -737,6 +873,7 @@ const App: React.FC = () => {
       try {
         await deleteDoc(doc(db, `users/${user.uid}/quickActions`, confirmDeleteQAId));
         setSyncStatus('idle');
+        setLastSyncTime(Date.now());
       } catch (e) {
         showToast('Failed to delete action', 'error');
         setSyncStatus('error');
@@ -807,6 +944,7 @@ const App: React.FC = () => {
                 
                 await batch.commit();
                 setSyncStatus('idle');
+                setLastSyncTime(Date.now());
                 showToast('Data imported and synced to database successfully');
               } catch (dbError) {
                 setSyncStatus('error');
@@ -936,15 +1074,25 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex flex-col font-sans text-textMain dark:text-gray-100 bg-bgPage transition-colors duration-300">
+    <>
+    {appLoadingMessage && <AppLoader />}
+    <div className={`min-h-screen flex flex-col font-sans text-textMain dark:text-gray-100 bg-bgPage transition-colors duration-300 ${appLoadingMessage ? 'opacity-0' : 'opacity-100'}`}>
+      {!isOnline && (
+        <div className="bg-yellow-500 text-center py-2 text-black font-semibold fixed top-0 w-full z-[100] animate-fade-in">
+          <div className="flex items-center justify-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636a9 9 0 010 12.728m-12.728 0a9 9 0 010-12.728m12.728 0L5.636 18.364m0-12.728L18.364 5.636" /></svg>
+            You are currently offline.
+          </div>
+        </div>
+      )}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
       {!user && showOnboarding && (
         <OnboardingModal isOpen={showOnboarding} onClose={() => setShowOnboarding(false)} />
       )}
       
-      <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled && user ? 'bg-primary dark:bg-gray-900/95 backdrop-blur-md shadow-lg py-3' : 'bg-primary dark:bg-gray-900 py-6'}`}>
+      <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${!isOnline ? 'mt-9' : ''} ${isScrolled && user ? 'bg-primary dark:bg-gray-900/95 backdrop-blur-md shadow-lg py-3' : 'bg-primary dark:bg-gray-900 py-6'}`}>
         <div className="container mx-auto px-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             <img src="/icon.ico" alt="App Icon" className={`rounded-full transition-all duration-300 ${isScrolled && user ? 'w-8 h-8' : 'w-10 h-10'}`} />
             <div className="flex flex-col text-textOnPrimary dark:text-white">
               <h1 className={`font-extrabold tracking-tight transition-all duration-300 ${isScrolled && user ? 'text-xl' : 'text-3xl'}`}>{user ? appName : 'Quick Notes'}</h1>
@@ -958,34 +1106,34 @@ const App: React.FC = () => {
             <div className="relative" ref={menuRef}>
               {user ? (
                 <>
-                  <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-2 text-textOnPrimary dark:text-white hover:bg-black/5 dark:hover:bg-white/10 rounded-full transition-colors flex items-center gap-2">
+                  <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="relative p-0 text-textOnPrimary dark:text-white rounded-full transition-colors flex items-center gap-2 group">
                     {user.photoURL ? (
-                      <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border-2 border-white/50" />
+                      <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border-2 border-white/50 group-hover:opacity-90 transition-opacity" />
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center border-2 border-white/50 font-bold text-sm" style={{ backgroundColor: getCategoryColor(user.uid) }}>
+                      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center border-2 border-white/50 font-bold text-sm group-hover:opacity-90 transition-opacity" style={{ backgroundColor: getCategoryColor(user.uid) }}>
                         {getUserInitials(user) === '?' ? <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg> : getUserInitials(user)}
                       </div>
                     )}
+                    {/* Online Status Dot */}
+                    <span 
+                      className={`absolute -bottom-0.5 -right-0.5 block w-3 h-3 rounded-full border border-white dark:border-gray-800 ring-2 ring-primary dark:ring-gray-900 transition-colors duration-300 ${isOnline ? 'bg-green-400' : 'bg-gray-500'}`}
+                      title={isOnline ? 'Online' : 'Offline'}
+                    ></span>
                   </button>
                   {isMenuOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-surface dark:bg-gray-800 rounded-xl shadow-xl py-2 animate-fade-in origin-top-right overflow-hidden z-[60] border border-borderLight dark:border-gray-700">
-                  {user ? (
-                    <>
-                      <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-700">
-                        <div className="font-semibold text-textMain dark:text-white truncate">{user.displayName || 'User'}</div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</div>
+                    <div className="absolute right-0 mt-2 w-56 bg-surface dark:bg-gray-800 rounded-xl shadow-2xl border border-borderLight dark:border-gray-700 overflow-hidden animate-fade-in-fast">
+                      <div className="p-4 border-b border-borderLight dark:border-gray-700">
+                        <p className="font-bold text-textMain dark:text-white truncate">{user.displayName || user.email}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>
                       </div>
-                      <div className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                        {!isOnline ? (
-                          <>
-                            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                            <span>Offline</span>
-                          </>
-                        ) : syncStatus === 'syncing' ? (
-                          <>
-                            <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse"></span>
-                            <span>Syncing...</span>
-                          </>
+                      {user ? (
+                        <>
+                          <div className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                            {syncStatus === 'syncing' ? (
+                              <>
+                                <svg className="animate-spin h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                <span>Syncing...</span>
+                              </>
                         ) : syncStatus === 'error' ? (
                           <>
                             <span className="w-2 h-2 rounded-full bg-red-500"></span>
@@ -994,7 +1142,7 @@ const App: React.FC = () => {
                         ) : (
                           <>
                             <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                            <span>Synced</span>
+                            <span>Synced {formatTimeAgo(lastSyncTime)}</span>
                           </>
                         )}
                       </div>
@@ -1018,6 +1166,7 @@ const App: React.FC = () => {
                       </>
                     )}
                   </button>
+                  <InstallButton />
                   {user && (
                     <>
                       <button onClick={() => { setShowSettings(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
@@ -1042,7 +1191,7 @@ const App: React.FC = () => {
                       Sign In / Sign Up
                     </button>
                   )}
-                  </div>
+                    </div>
                   )}
                 </>
               ) : (
@@ -1056,7 +1205,7 @@ const App: React.FC = () => {
       </nav>
 
       {user ? (
-        <main className="container mx-auto px-4 pt-32 max-w-3xl flex-1">
+        <main className={`container mx-auto px-4 pt-32 max-w-3xl flex-1 transition-all duration-300 ${!isOnline ? 'mt-9' : ''}`}>
           {isInitialDataLoading ? (
             <SkeletonLoader />
           ) : (
@@ -1194,34 +1343,36 @@ const App: React.FC = () => {
         </main>
       )}
 
-      <LoginModal
-        isOpen={showLoginModal}
-        onClose={() => {
-          setShowLoginModal(false);
-          // clear transient fields only when user didn't ask to remember credentials
-          if (!rememberMe) {
-            setAuthEmail('');
-            setAuthPassword('');
-          }
-          setAuthName('');
-          setIsSignUp(false);
-        }}
-        onGoogleLogin={handleGoogleLogin}
-        onEmailAuth={handleEmailAuth}
-        rememberMe={rememberMe}
-        setRememberMe={setRememberMe}
-        isSignUp={isSignUp}
-        setIsSignUp={setIsSignUp}
-        authName={authName}
-        setAuthName={setAuthName}
-        authEmail={authEmail}
-        setAuthEmail={setAuthEmail}
-        authPassword={authPassword}
-        setAuthPassword={setAuthPassword}
-        onForgotPassword={handleForgotPassword}
-        authLoading={authLoading}
-        authLoadingSource={authLoadingSource}
-      />
+      {showLoginModal && (
+        <LoginModal
+          isOpen={showLoginModal}
+          onClose={() => {
+            setShowLoginModal(false);
+            // clear transient fields only when user didn't ask to remember credentials
+            if (!rememberMe) {
+              setAuthEmail('');
+              setAuthPassword('');
+            }
+            setAuthName('');
+            setIsSignUp(false);
+          }}
+          onGoogleLogin={handleGoogleLogin}
+          onEmailAuth={handleEmailAuth}
+          rememberMe={rememberMe}
+          setRememberMe={setRememberMe}
+          isSignUp={isSignUp}
+          setIsSignUp={setIsSignUp}
+          authName={authName}
+          setAuthName={setAuthName}
+          authEmail={authEmail}
+          setAuthEmail={setAuthEmail}
+          authPassword={authPassword}
+          setAuthPassword={setAuthPassword}
+          onForgotPassword={handleForgotPassword}
+          authLoading={authLoading}
+          authLoadingSource={authLoadingSource}
+        />
+      )}
 
       {user && (
         <>
@@ -1255,7 +1406,7 @@ const App: React.FC = () => {
               
               <div>
                  <label className="block text-sm font-semibold text-textMain dark:text-gray-300 mb-3">Theme</label>
-                 <div className="flex gap-3">
+                 <div className="grid grid-cols-5 gap-3">
                     <button 
                       onClick={() => setAppTheme('default')}
                       className={`w-10 h-10 rounded-full bg-[#FFFFFF] border border-gray-200 shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'default' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
@@ -1290,6 +1441,34 @@ const App: React.FC = () => {
                       title="Purple"
                     >
                        {appTheme === 'purple' && <svg className="w-4 h-4 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                    </button>
+                    <button 
+                      onClick={() => setAppTheme('orange')}
+                      className={`w-10 h-10 rounded-full bg-[#FDBA74] shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'orange' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
+                      title="Orange"
+                    >
+                       {appTheme === 'orange' && <svg className="w-4 h-4 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                    </button>
+                    <button 
+                      onClick={() => setAppTheme('teal')}
+                      className={`w-10 h-10 rounded-full bg-[#99F6E4] shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'teal' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
+                      title="Teal"
+                    >
+                       {appTheme === 'teal' && <svg className="w-4 h-4 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                    </button>
+                    <button 
+                      onClick={() => setAppTheme('red')}
+                      className={`w-10 h-10 rounded-full bg-[#FECACA] shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'red' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
+                      title="Red"
+                    >
+                       {appTheme === 'red' && <svg className="w-4 h-4 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
+                    </button>
+                    <button 
+                      onClick={() => setAppTheme('slate')}
+                      className={`w-10 h-10 rounded-full bg-[#E2E8F0] shadow-sm flex items-center justify-center transition-transform hover:scale-105 ${appTheme === 'slate' ? 'ring-2 ring-textMain ring-offset-2 dark:ring-offset-gray-800' : ''}`}
+                      title="Slate"
+                    >
+                       {appTheme === 'slate' && <svg className="w-4 h-4 text-gray-800" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
                     </button>
                  </div>
               </div>
@@ -1598,6 +1777,7 @@ const App: React.FC = () => {
       )}
 
     </div>
+    </>
   );
 };
 

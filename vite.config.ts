@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
+    // const env = loadEnv(mode, '.', ''); // No longer needed for client-side vars
     return {
       server: {
         port: 3000,
@@ -40,13 +40,9 @@ export default defineConfig(({ mode }) => {
           }
         })
       ],
-      define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
-      },
       resolve: {
         alias: {
-          '@': path.resolve(__dirname, '.'),
+          '@': path.resolve(__dirname, './src'),
         }
       }
     };
