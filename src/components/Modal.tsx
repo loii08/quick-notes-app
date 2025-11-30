@@ -8,6 +8,7 @@ interface ModalProps {
   footer?: React.ReactNode;
   maxWidth?: string;
   closeOnBackdropClick?: boolean;
+  titleId?: string;
 }
 
 const Modal: React.FC<ModalProps> = ({
@@ -18,6 +19,7 @@ const Modal: React.FC<ModalProps> = ({
   footer,
   maxWidth = 'max-w-md',
   closeOnBackdropClick = true,
+  titleId,
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const previousActiveElement = useRef<HTMLElement | null>(null);
@@ -51,6 +53,9 @@ const Modal: React.FC<ModalProps> = ({
   if (!isOpen) return null;
 
   const handleBackdropClick = (e: React.MouseEvent) => {
+    // If a guided tour is active, prevent closing via backdrop clicks so demo flow is controlled
+    const tourActive = document && document.body && document.body.hasAttribute && document.body.hasAttribute('data-tour-open');
+    if (tourActive) return;
     if (closeOnBackdropClick && e.target === e.currentTarget) onClose();
   };
 
@@ -73,9 +78,9 @@ const Modal: React.FC<ModalProps> = ({
       >
         {/* Header */}
         <div className="flex items-center justify-between p-5 bg-primary">
-          <h2 id="modal-title" className="text-xl font-bold text-textOnPrimary">
-            {title}
-          </h2>
+            <h2 id={titleId || 'modal-title'} className="text-xl font-bold text-textOnPrimary">
+              {title}
+            </h2>
           <button
             onClick={onClose}
             className="p-2 text-textOnPrimary/70 hover:text-textOnPrimary hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary rounded-full transition-colors"

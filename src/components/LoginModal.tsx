@@ -193,10 +193,13 @@ const LoginModal: React.FC<LoginModalProps> = ({
 
             {/* Footer Options */}
             <div className="flex flex-col gap-3 text-xs">
-              <label className="inline-flex items-center">
-                <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} className="mr-2" />
-                <span>Remember me</span>
-              </label>
+              {/* Show Remember me only on Sign In (not on Sign Up) */}
+              {!isSignUp && (
+                <label className="inline-flex items-center">
+                  <input type="checkbox" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} className="mr-2" />
+                  <span>Remember me</span>
+                </label>
+              )}
               <div className="flex justify-between items-center">
                 <button onClick={onForgotPassword} className="text-green-600 hover:text-green-800">
                   Forgot Password?

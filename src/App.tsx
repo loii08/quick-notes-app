@@ -170,6 +170,14 @@ const App: React.FC = () => {
   const [showMobileAdd, setShowMobileAdd] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+
+  // Dev helper: allow opening onboarding from window.__openOnboarding() for headless testing
+  useEffect(() => {
+    try {
+      (window as any).__openOnboarding = () => setShowOnboarding(true);
+      return () => { (window as any).__openOnboarding = undefined; };
+    } catch (e) { /* noop on server */ }
+  }, []);
   
   const [authName, setAuthName] = useState('');
   const [rememberMe, setRememberMe] = useState(() => {
@@ -930,6 +938,9 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col font-sans text-textMain dark:text-gray-100 bg-bgPage transition-colors duration-300">
       <ToastContainer toasts={toasts} onRemove={removeToast} />
+      {!user && showOnboarding && (
+        <OnboardingModal isOpen={showOnboarding} onClose={() => setShowOnboarding(false)} />
+      )}
       
       <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled && user ? 'bg-primary dark:bg-gray-900/95 backdrop-blur-md shadow-lg py-3' : 'bg-primary dark:bg-gray-900 py-6'}`}>
         <div className="container mx-auto px-4 flex justify-between items-center">
@@ -1171,7 +1182,7 @@ const App: React.FC = () => {
                  </div>
               </div>
 
-              <div className="animate-fade-in pb-10">
+              <div id="notes-list-container" className="animate-fade-in pb-10">
                 {renderNotes()}
               </div>
             </>
@@ -1381,7 +1392,7 @@ const App: React.FC = () => {
             </div>
           </Modal>
 
-          <Modal isOpen={showMobileAdd} onClose={() => setShowMobileAdd(false)} title="New Note" footer={
+          <Modal isOpen={showMobileAdd} onClose={() => setShowMobileAdd(false)} title="New Note" titleId="new-note-modal-title" footer={
             <button 
               onClick={() => handleAddNote(inputValue)}
               disabled={syncStatus === 'syncing'}
@@ -1403,7 +1414,7 @@ const App: React.FC = () => {
               />
               <div className="flex justify-between items-end">
                  <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-2 block">Quick Actions</span>
-                 <button onClick={() => setShowQAManager(true)} className="text-xs text-textMain dark:text-indigo-400 font-semibold px-3 py-1.5 mb-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md border border-borderLight dark:border-gray-600 transition-colors">Manage</button>
+                 <button id="manage-qa-btn" onClick={() => setShowQAManager(true)} className="text-xs text-textMain dark:text-indigo-400 font-semibold px-3 py-1.5 mb-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-md border border-borderLight dark:border-gray-600 transition-colors">Manage</button>
               </div>
               <div className="flex gap-2 flex-wrap">
                 {quickActions
@@ -1422,7 +1433,7 @@ const App: React.FC = () => {
             </div>
           </Modal>
 
-          <Modal isOpen={showQAManager} onClose={() => setShowQAManager(false)} title="Manage Quick Actions">
+          <Modal isOpen={showQAManager} onClose={() => setShowQAManager(false)} title="Manage Quick Actions" titleId="qa-modal-title">
             <div className="flex flex-col gap-4 hide-scrollbar">
               <div className="p-4 bg-primary/10 dark:bg-indigo-900/20 rounded-xl border border-primary/20 dark:border-indigo-900/30">
                  <h4 className="text-xs font-bold text-textMain dark:text-indigo-400 uppercase tracking-wide mb-3">Create New Action</h4>
@@ -1577,6 +1588,7 @@ const App: React.FC = () => {
 
       {user && (
         <button 
+          id="fab-add-note"
           onClick={() => setShowMobileAdd(true)}
           className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-primary text-textOnPrimary shadow-2xl shadow-primary/40 flex items-center justify-center rounded-full active:scale-90 transition-transform z-40"
           aria-label="Add Note"
