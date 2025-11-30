@@ -963,7 +963,16 @@ const App: React.FC = () => {
 
   const saveEditCategory = async () => {
     if (editingCatId && editCatName.trim()) {
-      const updatedCat = { id: editingCatId, name: editCatName.trim() };
+      const trimmedName = editCatName.trim();
+
+      // Check for duplicates, excluding the category being edited
+      if (categories.some(cat => cat.id !== editingCatId && cat.name.toLowerCase() === trimmedName.toLowerCase())) {
+        showToast(`Category "${trimmedName}" already exists.`, 'error');
+        return;
+      }
+
+      const updatedCat = { id: editingCatId, name: trimmedName };
+
       if (user && db) {
         if (isOnline) {
           setSyncStatus('syncing');
