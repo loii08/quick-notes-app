@@ -3,7 +3,7 @@ import { Note, Category, QuickAction, FilterMode, ToastMessage, ToastType } from
 import Modal from './components/Modal';
 import ConfirmationModal from './components/ConfirmationModal';
 import NoteCard from './components/NoteCard';
-import ToastContainer from './components/ToastContainer';
+import ToastContainer from './components/ToastContainer'; // This import is now correct
 import OnboardingModal from './components/OnboardingModal';
 import SkeletonLoader from './components/SkeletonLoader';
 import LandingPage from './components/LandingPage';
@@ -258,6 +258,8 @@ const App: React.FC = () => {
   const [editQAText, setEditQAText] = useState('');
   const [editQACat, setEditQACat] = useState('general');
 
+  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+
   const menuRef = useRef<HTMLDivElement>(null);
   const loadingStartTime = useRef<number | null>(null);
   const prevIsOnline = useRef(isOnline);
@@ -492,6 +494,7 @@ const App: React.FC = () => {
     try {
       // 1. Get current local data (which includes offline changes)
       const localNotes: Note[] = JSON.parse(localStorage.getItem('qn_notes') || '[]');
+      const localQAs: QuickAction[] = JSON.parse(localStorage.getItem('qn_qa') || '[]');
 
       // 2. Fetch current cloud data once
       const notesRef = collection(db, `users/${user.uid}/notes`);
@@ -501,6 +504,13 @@ const App: React.FC = () => {
       cloudSnapshot.forEach(doc => {
         const data = doc.data() as Note;
         cloudNotesMap.set(data.id, data);
+      });
+
+      const qaRef = collection(db, `users/${user.uid}/quickActions`);
+      const cloudQASnapshot = await getDocs(qaRef);
+      const cloudQAMap = new Map<string, QuickAction>();
+      cloudQASnapshot.forEach(doc => {
+        cloudQAMap.set(doc.id, doc.data() as QuickAction);
       });
 
       const cloudSettingsDoc = await getDoc(settingsRef);
@@ -552,6 +562,22 @@ const App: React.FC = () => {
         }
       }
 
+      // 5. Compare and sync Quick Actions
+      for (const localQA of localQAs) {
+        const cloudQA = cloudQAMap.get(localQA.id);
+        if (localQA.deletedAt && cloudQA) {
+          // This QA was deleted offline, delete it from cloud
+          batch.delete(doc(db, `users/${user.uid}/quickActions`, localQA.id));
+          hasChanges = true;
+          continue;
+        }
+
+        if (!cloudQA) {
+          batch.set(doc(db, `users/${user.uid}/quickActions`, localQA.id), localQA);
+          hasChanges = true;
+        }
+      }
+
       if (hasChanges) {
         await batch.commit();
         showToast('Offline changes synced successfully!');
@@ -561,6 +587,7 @@ const App: React.FC = () => {
 
       // After syncing, trigger a re-fetch from onSnapshot by cleaning up local state
       setNotes(prev => prev.filter(n => !n.deletedAt));
+      setQuickActions(prev => prev.filter(qa => !qa.deletedAt));
 
     } catch (error) {
       console.error("Offline sync failed:", error);
@@ -812,11 +839,6 @@ const App: React.FC = () => {
   };
 
   const handleUpdateNote = async (id: string, content: string, categoryId: string, timestamp: number, silent: boolean = false) => {
-    if (!isOnline) {
-      showToast('Editing notes is disabled while offline.', 'error');
-      return;
-    }
-
     const updatedNote = { id, content, categoryId, timestamp };
 
     // Optimistically update the UI immediately for a responsive feel.
@@ -864,6 +886,41 @@ const App: React.FC = () => {
     }
 
     setConfirmDeleteNoteId(null);
+  };
+
+  const handleToggleNoteSelection = (id: string) => {
+    setSelectedNoteIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const handleDeleteSelectedNotes = async () => {
+    if (selectedNoteIds.size === 0) return;
+
+    if (isOnline && user && db) {
+      setSyncStatus('syncing');
+      const batch = writeBatch(db);
+      selectedNoteIds.forEach(id => {
+        batch.delete(doc(db, `users/${user.uid}/notes`, id));
+      });
+      await batch.commit();
+      setSyncStatus('idle');
+      setLastSyncTime(Date.now());
+    } else {
+      // Offline: mark for deletion
+      const now = Date.now();
+      setNotes(prev => prev.map(n => selectedNoteIds.has(n.id) ? { ...n, deletedAt: now } : n));
+      localStorage.setItem('qn_notes', JSON.stringify(notes.map(n => selectedNoteIds.has(n.id) ? { ...n, deletedAt: now } : n)));
+    }
+
+    showToast(`${selectedNoteIds.size} note${selectedNoteIds.size > 1 ? 's' : ''} deleted.`);
+    setSelectedNoteIds(new Set());
   };
 
   const handleAddCategory = async (name: string) => {
@@ -973,18 +1030,18 @@ const App: React.FC = () => {
 
   const handleAddQA = async (text: string, categoryId: string) => {
     if (!text.trim()) return;
-    if (!isOnline) {
-      showToast('Adding quick actions is disabled while offline.', 'error');
-      return;
-    }
 
     const newQA = { id: generateId(), text, categoryId };
-    setQuickActions(prev => [...prev, newQA]);
+    setQuickActions(prev => {
+      const newActions = [...prev, newQA];
+      // Save to local storage immediately for offline persistence
+      localStorage.setItem('qn_qa', JSON.stringify(newActions));
+      return newActions;
+    });
     
-    if (user && db) {
-      if (isOnline) {
-        setSyncStatus('syncing');
-        try {
+    if (user && db && isOnline) {
+      setSyncStatus('syncing');
+      try {
           await setDoc(doc(db, `users/${user.uid}/quickActions`, newQA.id), newQA);
           setSyncStatus('idle');
           setLastSyncTime(Date.now());
@@ -992,7 +1049,6 @@ const App: React.FC = () => {
           showToast('Failed to add action', 'error');
           setSyncStatus('error');
         }
-      }
     }
     showToast('Quick action added');
   };
@@ -1051,11 +1107,12 @@ const App: React.FC = () => {
           showToast('Failed to delete action', 'error');
           setSyncStatus('error');
         }
+      } else {
+        setQuickActions(prev => prev.map(qa => qa.id === confirmDeleteQAId ? { ...qa, deletedAt: Date.now() } : qa));
+        localStorage.setItem('qn_qa', JSON.stringify(quickActions.map(qa => qa.id === confirmDeleteQAId ? { ...qa, deletedAt: Date.now() } : qa)));
+        showToast('Quick action will be deleted when back online');
       }
-    } else {
-      setQuickActions(prev => prev.filter(q => q.id !== confirmDeleteQAId));
     }
-    showToast('Quick action deleted');
     setConfirmDeleteQAId(null);
   };
 
@@ -1143,6 +1200,7 @@ const App: React.FC = () => {
 
   const filteredNotes = useMemo(() => {
     return notes.filter(note => {
+      if (note.deletedAt && selectedNoteIds.size === 0) return false; // Hide soft-deleted notes unless in selection mode
       if (note.deletedAt) return false; // Exclude notes marked for deletion
       if (currentCategory !== 'all' && note.categoryId !== currentCategory) return false;      
       const noteDate = new Date(note.timestamp);
@@ -1234,6 +1292,9 @@ const App: React.FC = () => {
                 onActivate={() => setActiveNoteId(note.id)}
                 onDeactivate={() => setActiveNoteId(null)}
                 isOnline={isOnline}
+                isSelected={selectedNoteIds.has(note.id)}
+                onToggleSelect={handleToggleNoteSelection}
+                isSelectionActive={selectedNoteIds.size > 0}
               />
             ))}
           </div>
@@ -1396,7 +1457,7 @@ const App: React.FC = () => {
       </nav>
 
       {user ? (
-        <main className={`container mx-auto px-4 pt-32 max-w-3xl flex-1 transition-all duration-300 ${(!isOnline || showBackOnlineBanner) ? 'mt-9' : ''}`}>
+        <main className={`relative container mx-auto px-4 pt-32 max-w-3xl flex-1 transition-all duration-300 ${(!isOnline || showBackOnlineBanner) ? 'mt-9' : ''}`}>
           {isInitialDataLoading ? (
             <SkeletonLoader />
           ) : (
@@ -1442,6 +1503,18 @@ const App: React.FC = () => {
                 </div>
               </div>
 
+              {selectedNoteIds.size > 0 && (
+                <div className="fixed bottom-0 left-1/2 -translate-x-1/2 mb-4 z-40 w-full max-w-md mx-auto px-4">
+                  <div className="bg-primary dark:bg-gray-700 text-textOnPrimary dark:text-white rounded-xl shadow-2xl p-3 flex items-center justify-between animate-fade-in">
+                    <span className="font-bold text-sm">{selectedNoteIds.size} note{selectedNoteIds.size > 1 ? 's' : ''} selected</span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setSelectedNoteIds(new Set())} className="px-3 py-1.5 text-xs font-semibold rounded-md bg-black/10 hover:bg-black/20 transition">Cancel</button>
+                      <button onClick={handleDeleteSelectedNotes} className="px-3 py-1.5 text-xs font-semibold rounded-md bg-red-500 hover:bg-red-600 text-white transition">Delete</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="hidden md:block bg-surface dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-borderLight dark:border-gray-700 mb-8 animate-slide-up">
                 <div className="flex gap-4 mb-4">
                   <input 
@@ -1468,6 +1541,7 @@ const App: React.FC = () => {
                   <div className="flex gap-2 flex-wrap">
                     {quickActions
                       .filter(qa => currentCategory === 'all' || qa.categoryId === currentCategory || qa.categoryId === 'general')
+                      .filter(qa => !qa.deletedAt)
                       .map(qa => (
                         <button 
                           key={qa.id}
@@ -1526,6 +1600,16 @@ const App: React.FC = () => {
                 {renderNotes()}
               </div>
             </>
+          )}
+          {user && (
+            <button 
+              id="fab-add-note"
+              onClick={() => setShowMobileAdd(true)}
+              className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-primary text-textOnPrimary shadow-2xl shadow-primary/40 flex items-center justify-center rounded-full active:scale-90 transition-transform z-40"
+              aria-label="Add Note"
+            >
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            </button>
           )}
         </main>
       ) : (
@@ -1790,6 +1874,7 @@ const App: React.FC = () => {
               <div className="flex gap-2 flex-wrap">
                 {quickActions
                   .filter(qa => currentCategory === 'all' || qa.categoryId === currentCategory || qa.categoryId === 'general')
+                  .filter(qa => !qa.deletedAt)
                   .map(qa => (
                     <button 
                       key={qa.id}
@@ -1824,7 +1909,6 @@ const App: React.FC = () => {
                               const input = document.getElementById('new-qa-input') as HTMLInputElement;
                               const select = document.getElementById('new-qa-cat') as HTMLSelectElement;
                               handleAddQA(input.value, select.value);
-                              input.value = '';
                               if (isOnline) input.value = '';
                           }}
                           disabled={syncStatus === 'syncing'}
@@ -1840,15 +1924,15 @@ const App: React.FC = () => {
               <div className="border-t border-borderLight dark:border-gray-700 my-1"></div>
               <div>
                 <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">Existing Actions</h4>
-                <div className="max-h-[250px] overflow-y-auto pr-1 flex flex-col gap-2">
-                  {quickActions.length === 0 ? (
+                <div className="max-h-[250px] overflow-y-auto pr-1 flex flex-col gap-2">                  
+                  {quickActions.filter(qa => !qa.deletedAt).length === 0 ? (
                     <div className="text-center py-8 px-4">
                       <svg className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M11 4a2 2 0 114 0 2 2 0 00-4 0zm-7 8h14a2 2 0 012 2v3a2 2 0 01-2 2H5a2 2 0 01-2-2v-3a2 2 0 012-2z" /></svg>
                       <h3 className="mt-2 text-sm font-medium text-gray-800 dark:text-gray-200">No Quick Actions</h3>
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Create one above to get started.</p>
                     </div>
                   ) : (
-                    quickActions.map((qa) => (
+                    quickActions.filter(qa => !qa.deletedAt).map((qa) => (
                       <div key={qa.id} className="group flex items-center justify-between p-3 bg-white dark:bg-gray-700/50 rounded-xl border border-borderLight dark:border-gray-700 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                         {editingQAId === qa.id ? (
                           <div className="flex flex-col gap-2 flex-1 mr-2">
