@@ -1,50 +1,50 @@
-import React from 'react';
-import { useInstallPWA } from '@/InstallPWAContext';
-import { Download } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
 
-const isIos = () => {
-  if (typeof window === 'undefined' || !window.navigator) return false;
-  const userAgent = window.navigator.userAgent.toLowerCase();
-  return /iphone|ipad|ipod/.test(userAgent);
-};
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[];
+  readonly userChoice: Promise<{
+    outcome: 'accepted' | 'dismissed';
+    platform: string;
+  }>;
+  prompt(): Promise<void>;
+}
 
-const isInStandaloneMode = () => {
-    if (typeof window === 'undefined' || !window.navigator) return false;
-    // The 'standalone' property is a non-standard API supported by Safari on iOS
-    return ('standalone' in window.navigator) && ((window.navigator as any).standalone === true);
-};
+export const InstallButton: React.FC = () => {
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
-export const InstallButton = () => {
-  const { canInstall, showInstallPrompt } = useInstallPWA();
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e as BeforeInstallPromptEvent);
+    };
 
-  const handleIosInstall = () => {
-    alert('To install, tap the Share button and then "Add to Home Screen".');
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') {
+      console.log('User accepted the install prompt');
+    } else {
+      console.log('User dismissed the install prompt');
+    }
+    setInstallPrompt(null);
   };
 
-  // Don't show the button if the app is already running in standalone mode
-  if (isInStandaloneMode()) {
-    return null;
+  if (!installPrompt) {
+    return null; // The button will only appear if the app is installable
   }
 
-  // Always show an install option on iOS (since we can't detect installability)
-  if (isIos()) {
-    return (
-      <button onClick={handleIosInstall} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
-        <Download className="w-4 h-4 text-gray-400" />
-        Install App
-      </button>
-    );
-  }
-
-  // For other browsers, only show if the `beforeinstallprompt` event was fired
-  if (canInstall) {
-    return (
-      <button onClick={showInstallPrompt} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
-        <Download className="w-4 h-4 text-gray-400" />
-        Install App
-      </button>
-    );
-  }
-
-  return null;
+  return (
+    <button onClick={handleInstallClick} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
+      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+      Install App
+    </button>
+  );
 };

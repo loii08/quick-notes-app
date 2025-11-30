@@ -19,6 +19,13 @@ export default defineConfig(({ mode }) => {
             name: 'Quick Notes',
             short_name: 'QuickNotes',
             description: 'A simple and fast note-taking app.',
+            screenshots: [
+              {
+                "src": "screenshot1.png",
+                "sizes": "1080x1920",
+                "type": "image/png"
+              }
+            ],
             theme_color: '#667eea',
             background_color: '#667eea',
             display: 'standalone',
@@ -35,6 +42,12 @@ export default defineConfig(({ mode }) => {
                 src: 'pwa-512x512.png', // Should be in public folder
                 sizes: '512x512',
                 type: 'image/png'
+              },
+              {
+                src: 'pwa-512x512.png', // Maskable icon
+                sizes: '512x512',
+                type: 'image/png',
+                purpose: 'maskable'
               }
             ]
           }

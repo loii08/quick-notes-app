@@ -1292,9 +1292,9 @@ const App: React.FC = () => {
                 <>
                   <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="relative p-0 text-textOnPrimary dark:text-white rounded-full transition-colors flex items-center gap-2 group">
                     {user.photoURL ? (
-                      <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border-2 border-white/50 group-hover:opacity-90 transition-opacity" />
+                      <img src={user.photoURL} alt="Profile" className="w-10 h-10 rounded-full border-2 border-white/50 group-hover:opacity-90 transition-opacity" />
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center border-2 border-white/50 font-bold text-sm group-hover:opacity-90 transition-opacity" style={{ backgroundColor: getCategoryColor(user.uid) }}>
+                      <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center border-2 border-white/50 font-bold text-sm group-hover:opacity-90 transition-opacity" style={{ backgroundColor: getCategoryColor(user.uid) }}>
                         {getUserInitials(user) === '?' ? <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg> : getUserInitials(user)}
                       </div>
                     )}
