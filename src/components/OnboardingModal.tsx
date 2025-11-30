@@ -82,7 +82,7 @@ const ONBOARDING_STEPS: Step[] = [
     message: 'Your notes appear here. Tap a note to open, edit or delete it.',
     // Target the first note card container
     selector: '#notes-list-container',
-    placement: 'left',
+    placement: 'center',
     device: 'both',
   },
   {
@@ -578,7 +578,12 @@ const OnboardingModal: React.FC<OnboardingModalProps> = ({ isOpen, onClose }) =>
       {/* Tooltip */}
       <div
         className="absolute z-[10000] max-w-sm bg-white dark:bg-gray-800 rounded-xl shadow-xl p-4 text-sm text-textMain dark:text-gray-100"
-        style={{ position: 'fixed', ...computeTooltipStyle(), zIndex: 10000 }}
+        style={{ 
+          position: 'fixed', 
+          ...computeTooltipStyle(), 
+          zIndex: 10000,
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4), 0 8px 16px rgba(0, 0, 0, 0.2)'
+        }}
         role="dialog"
         aria-modal="true"
       >
