@@ -1956,6 +1956,9 @@ const App: React.FC = () => {
         <div className="mt-2 text-gray-400 dark:text-gray-600">
           {'Inspired by and for Chan Li ❤️'}
         </div>
+        <div className="mt-2 text-gray-400 dark:text-gray-600 text-xs">
+          Version {import.meta.env.APP_VERSION}
+        </div>
       </footer>
 
       {user && (
