@@ -323,6 +323,7 @@ const App: React.FC = () => {
             setShowOnboarding(true);
           } else {
             showToast(`Welcome back, ${name}!`);
+            setFilterMode('today');
           }
         }
       }
