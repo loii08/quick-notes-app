@@ -221,9 +221,11 @@ const App: React.FC = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showClearAllNotesConfirm, setShowClearAllNotesConfirm] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [clearNotesInput, setClearNotesInput] = useState('');
+  const [clearNotesError, setClearNotesError] = useState(false);
   const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
+  const clearNotesInputRef = useRef<HTMLInputElement>(null);
 
-  // Dev helper: allow opening onboarding from window.__openOnboarding() for headless testing
   useEffect(() => {
     try {
       (window as any).__openOnboarding = () => setShowOnboarding(true);
@@ -258,6 +260,7 @@ const App: React.FC = () => {
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
 
   const menuRef = useRef<HTMLDivElement>(null);
+
   const loadingStartTime = useRef<number | null>(null);
   const prevIsOnline = useRef(isOnline);
 
@@ -838,24 +841,24 @@ const App: React.FC = () => {
 
   const handleUpdateNote = async (id: string, content: string, categoryId: string, timestamp: number, silent: boolean = false) => {
     const updatedNote = { id, content, categoryId, timestamp };
+    const newTimestamp = Date.now(); // Always generate a new timestamp for the update
 
-    // Optimistically update the UI immediately for a responsive feel.
-    setNotes(prev => prev.map(n => n.id === id ? { ...n, content, categoryId, timestamp } : n));
-    // Save to local storage immediately for offline persistence
-    localStorage.setItem('qn_notes', JSON.stringify(notes.map(n => n.id === id ? { ...n, content, categoryId, timestamp } : n)));
+    setNotes(prev => {
+      const updatedNotes = prev.map(n => n.id === id ? { ...n, content, categoryId, timestamp: newTimestamp } : n);
+      localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
+      return updatedNotes;
+    });
     
     if (user && db && isOnline) {
-      if (isOnline) {
         if (!silent) setSyncStatus('syncing');
         try {
-          await setDoc(doc(db, `users/${user.uid}/notes`, id), updatedNote, { merge: true });
+          await setDoc(doc(db, `users/${user.uid}/notes`, id), { ...updatedNote, timestamp: newTimestamp }, { merge: true });
           setSyncStatus('idle');
           if (!silent) setLastSyncTime(Date.now());
         } catch (e) {
           if (!silent) showToast('Update failed', 'error');
           setSyncStatus('error');
         }
-      }
     }
   };
 
@@ -876,10 +879,12 @@ const App: React.FC = () => {
         setSyncStatus('error');
       }
     } else {
-      // If offline, mark for deletion instead of removing
-      setNotes(prev => prev.map(n => n.id === confirmDeleteNoteId ? { ...n, deletedAt: Date.now() } : n));
-      // Save to local storage immediately for offline persistence
-      localStorage.setItem('qn_notes', JSON.stringify(notes.map(n => n.id === confirmDeleteNoteId ? { ...n, deletedAt: Date.now() } : n)));
+      const now = Date.now();
+      setNotes(prev => {
+        const updatedNotes = prev.map(n => n.id === confirmDeleteNoteId ? { ...n, deletedAt: now } : n);
+        localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
+        return updatedNotes;
+      });
       showToast('Note will be deleted when back online');
     }
 
@@ -1206,17 +1211,31 @@ const App: React.FC = () => {
   };
 
   const handleClearAllNotes = async () => {
+    if (clearNotesInput !== 'Delete All My Notes') {
+      setClearNotesError(true);
+      showToast('Confirmation text is incorrect.', 'error');
+      // Focus the input field to guide the user.
+      clearNotesInputRef.current?.focus();
+      // Throw an error to explicitly signal failure to the ConfirmationModal,
+      // preventing it from closing and allowing the error state to be visible.
+      throw new Error('Confirmation text is incorrect.');
+    }
+
+    // For non-logged-in users, just clear local state.
     if (!user || !db) {
-      // Handle local-only mode
       setNotes([]);
       saveStoredNotes([]);
       showToast('All local notes have been cleared.');
+      setShowClearAllNotesConfirm(false);
+      setClearNotesInput('');
+      setClearNotesError(false);
       return;
     }
-
+    
+    // For logged-in users, this is an online-only action
     if (!isOnline) {
       showToast('You must be online to clear all notes.', 'error');
-      return;
+      throw new Error("User is offline");
     }
 
     setSyncStatus('syncing');
@@ -1236,6 +1255,9 @@ const App: React.FC = () => {
       showToast(ERROR_MESSAGES.NOTES.DELETE_FAILED, 'error');
     } finally {
       setSyncStatus('idle');
+      setClearNotesError(false);
+      setShowClearAllNotesConfirm(false);
+      setClearNotesInput('');
     }
   };
 
@@ -1579,7 +1601,7 @@ const App: React.FC = () => {
                   <button 
                     onClick={() => handleAddNote(inputValue)}
                     disabled={syncStatus === 'syncing'}
-                    className="px-8 bg-primary hover:bg-primaryDark text-textOnPrimary font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center w-28"
+                    className="px-8 bg-primary hover:bg-primaryDark text-textOnPrimary font-bold rounded-xl shadow-lg hover:shadow-xl transition-all active:scale-95 flex items-center justify-center w-28 disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     {syncStatus === 'syncing' ? (
                       <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -1802,7 +1824,7 @@ const App: React.FC = () => {
               <button 
                 onClick={handleSaveSettings}
                 disabled={syncStatus === 'syncing'}
-                className="w-full py-3 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors mt-2 flex items-center justify-center"
+                className="w-full py-3 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors mt-2 flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {syncStatus === 'syncing' ? (
                   <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -1863,7 +1885,7 @@ const App: React.FC = () => {
                       if (isOnline) input.value = '';
                   }}
                   disabled={syncStatus === 'syncing'}
-                  className="px-4 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors w-24 flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
+                  className="px-4 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors w-24 flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-70"
                 > 
                   {syncStatus === 'syncing' ? (
                     <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -1877,7 +1899,7 @@ const App: React.FC = () => {
                         <div className="flex items-center gap-2 flex-1">
                             <input 
                                 value={editCatName}
-                                onChange={(e) => setEditCatName(e.target.value)}
+                                onChange={(e) => setEditCatName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saveEditCategory()}
                                 className="flex-1 p-1 text-sm border rounded bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
                             />
                             <button onClick={saveEditCategory} disabled={syncStatus === 'syncing'} className="text-xs bg-primary/20 text-textMain px-2 py-1 rounded w-16 h-6 flex items-center justify-center">
@@ -1912,7 +1934,7 @@ const App: React.FC = () => {
             <button 
               onClick={() => handleAddNote(inputValue)}
               disabled={syncStatus === 'syncing'}
-              className="w-full py-3.5 bg-primary text-textOnPrimary font-bold rounded-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center"
+              className="w-full py-3.5 bg-primary text-textOnPrimary font-bold rounded-xl shadow-lg active:scale-95 transition-transform flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-70"
             >
               {syncStatus === 'syncing' ? (
                 <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -1973,7 +1995,7 @@ const App: React.FC = () => {
                               if (isOnline) input.value = '';
                           }}
                           disabled={syncStatus === 'syncing'}
-                          className="px-6 bg-primary text-textOnPrimary font-bold rounded-lg hover:bg-primaryDark transition-colors shadow-sm w-28 flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
+                          className="px-6 bg-primary text-textOnPrimary font-bold rounded-lg hover:bg-primaryDark transition-colors shadow-sm w-28 flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-70"
                         > 
                           {syncStatus === 'syncing' ? (
                             <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -2000,7 +2022,7 @@ const App: React.FC = () => {
                             <input
                               value={editQAText}
                               onChange={(e) => setEditQAText(e.target.value)}
-                              className="p-1 text-sm border rounded w-full bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                              className="p-1 text-sm border rounded w-full bg-white dark:bg-gray-700 dark:text-white dark:border-gray-600" onKeyDown={(e) => e.key === 'Enter' && saveEditQA()}
                               placeholder="Action Name"
                             />
                             <div className="flex gap-2">
@@ -2055,7 +2077,7 @@ const App: React.FC = () => {
             message="This action cannot be undone. Are you sure you want to delete this note?"
             confirmText="Delete"
             isDestructive={true}
-            syncStatus={syncStatus}
+            disabled={syncStatus === 'syncing'}
           />
           <ConfirmationModal
             isOpen={!!confirmDeleteCategoryId}
@@ -2065,7 +2087,7 @@ const App: React.FC = () => {
             message="Are you sure you want to delete this category? Notes will be moved to 'General'."
             confirmText="Delete"
             isDestructive={true}
-            syncStatus={syncStatus}
+            disabled={syncStatus === 'syncing'}
           />
           <ConfirmationModal
             isOpen={!!confirmDeleteQAId}
@@ -2075,17 +2097,41 @@ const App: React.FC = () => {
             message="Are you sure you want to delete this quick action?"
             confirmText="Delete"
             isDestructive={true}
-            syncStatus={syncStatus}
+            disabled={syncStatus === 'syncing'}
           />
           <ConfirmationModal
             isOpen={showClearAllNotesConfirm}
-            onClose={() => setShowClearAllNotesConfirm(false)}
+            onClose={() => {
+              setShowClearAllNotesConfirm(false);
+              setClearNotesInput('');
+              setClearNotesError(false);
+            }}
             onConfirm={handleClearAllNotes}
             title="Clear All Notes?"
-            message="This is a permanent action and will delete all of your notes from this account. This cannot be undone. Are you absolutely sure?"
-            confirmText="Yes, Delete All"
-            isDestructive={true}
-            syncStatus={syncStatus}
+            message={
+              <div>
+                <div>This is a permanent action and will delete all of your notes from this account. This cannot be undone.</div>
+                <div className="mt-4 font-semibold text-textMain dark:text-gray-200">To confirm, please type "<span className="text-red-500 font-bold">Delete All My Notes</span>" in the box below.</div>
+                <input
+                  type="text"
+                  ref={clearNotesInputRef}
+                  value={clearNotesInput}
+                  onChange={(e) => {
+                    setClearNotesInput(e.target.value);
+                    if (clearNotesError) setClearNotesError(false);
+                  }}
+                  className={`w-full p-2 mt-2 border rounded-lg focus:outline-none text-sm bg-bgPage dark:bg-gray-700 dark:text-white transition-colors ${
+                    clearNotesError
+                      ? 'border-red-500 focus:border-red-500'
+                      : 'border-borderLight dark:border-gray-600 focus:border-primary'
+                  }`}
+                />
+              </div>
+            }
+            confirmText="Clear All"
+            isDestructive={clearNotesInput === 'Delete All My Notes'}
+            disableConfirm={clearNotesInput !== 'Delete All My Notes'}
+            disabled={syncStatus === 'syncing'}
           />
           <SetPasswordModal
             isOpen={showSetPasswordModal}
