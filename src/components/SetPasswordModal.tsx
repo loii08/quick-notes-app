@@ -73,9 +73,28 @@ const SetPasswordModal: React.FC<SetPasswordModalProps> = ({ isOpen, onClose, us
       onClose();
     } catch (err: any) {
       console.error(err);
-      const errorMessage = err.code === 'auth/wrong-password' ? "Incorrect current password." : "Failed to update password. Please try again.";
-      setError(errorMessage);
-      onError(errorMessage);
+      let errorMessage = "An unexpected error occurred. Please try again."; // Default inline error
+      let toastMessage = errorMessage; // Default toast message
+
+      // Specific error handling for different Firebase auth codes
+      if (err.code === 'auth/wrong-password') {
+        // This error code is specifically for an incorrect password during reauthentication or login
+        errorMessage = "The current password you entered is incorrect.";
+        toastMessage = "Incorrect password. Please try again.";
+      } else if (err.code === 'auth/invalid-credential') {
+        // This can also indicate an issue with the provided credential, often related to password format or validity
+        errorMessage = "The credentials provided are invalid. Please check and try again.";
+        toastMessage = "Invalid credentials provided.";
+      } else if (err.code === 'auth/weak-password') {
+        errorMessage = "The new password is too weak. It must be at least 6 characters long.";
+        toastMessage = "The password is too weak.";
+      } else if (err.code === 'auth/email-already-in-use') {
+        errorMessage = "An account with this email already has a password.";
+        toastMessage = "Email already in use.";
+      } // For any other errors, the default generic messages will be used.
+
+      setError(errorMessage); // Update the inline error message
+      onError(toastMessage); // Trigger the toast notification
     } finally {
       setIsLoading(false);
     }

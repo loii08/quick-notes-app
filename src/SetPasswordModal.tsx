@@ -62,8 +62,13 @@ const SetPasswordModal: React.FC<SetPasswordModalProps> = ({ isOpen, onClose, us
         }
       } else {
         // --- Set Password Logic ---
-        await updatePassword(user, newPassword);
-        onSuccess("Password set successfully! You can now sign in with your email and password.");
+        if (user.email) {
+            const credential = EmailAuthProvider.credential(user.email, newPassword);
+            await linkWithCredential(user, credential);
+            onSuccess("Password set successfully! You can now sign in with your email and password.");
+        } else {
+            throw new Error("User email not found to link password.");
+        }
       }
       onClose();
     } catch (err: any) {
