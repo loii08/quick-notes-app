@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
-import { User, updatePassword, EmailAuthProvider, reauthenticateWithCredential, linkWithCredential } from 'firebase/auth';
+import { User, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 
 interface SetPasswordModalProps {
   isOpen: boolean;
@@ -62,20 +62,18 @@ const SetPasswordModal: React.FC<SetPasswordModalProps> = ({ isOpen, onClose, us
         }
       } else {
         // --- Set Password Logic ---
-        if (user.email) {
-            const credential = EmailAuthProvider.credential(user.email, newPassword);
-            await linkWithCredential(user, credential);
-            onSuccess("Password set successfully! You can now sign in with your email and password.");
-        } else {
-            throw new Error("User email not found to link password.");
-        }
+        await updatePassword(user, newPassword);
+        onSuccess("Password set successfully! You can now sign in with your email and password.");
       }
       onClose();
     } catch (err: any) {
       console.error(err);
-      const errorMessage = err.code === 'auth/wrong-password' ? "Incorrect current password." : "Failed to update password. Please try again.";
-      setError(errorMessage);
-      onError(errorMessage);
+      if (err.code === 'auth/wrong-password') {
+        setError("Incorrect current password.");
+      } else {
+        setError("An error occurred. Please try again.");
+      }
+      onError(err.code === 'auth/wrong-password' ? "Incorrect current password." : "Failed to update password.");
     } finally {
       setIsLoading(false);
     }
@@ -87,11 +85,6 @@ const SetPasswordModal: React.FC<SetPasswordModalProps> = ({ isOpen, onClose, us
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={title}>
       <div className="flex flex-col gap-4">
-        {!hasPasswordProvider && (
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-                Set a password to enable login with your email. You'll be able to login using either Google or your email and password.
-            </p>
-        )}
         {hasPasswordProvider && (
           <div>
             <label className="block text-sm font-semibold text-textMain dark:text-gray-300 mb-2">Current Password</label>
