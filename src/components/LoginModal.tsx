@@ -77,7 +77,7 @@ const LoginModal: React.FC<LoginModalProps> = ({
 
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
-          <input type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="you@example.com" className="w-full p-3 border border-borderLight dark:border-gray-600 rounded-xl focus:outline-none focus:border-primary text-sm bg-bgPage dark:bg-gray-700 dark:text-white" />
+          <input type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="Email Address" className="w-full p-3 border border-borderLight dark:border-gray-600 rounded-xl focus:outline-none focus:border-primary text-sm bg-bgPage dark:bg-gray-700 dark:text-white" />
         </div>
 
         <div>
@@ -86,7 +86,7 @@ const LoginModal: React.FC<LoginModalProps> = ({
             type={showPassword ? 'text' : 'password'}
             value={authPassword}
             onChange={(e) => setAuthPassword(e.target.value)}
-            placeholder="••••••••"
+            placeholder="Password"
             icon={showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
             onIconClick={() => setShowPassword(!showPassword)}
           />
