@@ -1,17 +1,23 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Note, Category, QuickAction, FilterMode, ToastMessage, ToastType } from './types';
 import Modal from './components/Modal';
 import ConfirmationModal from './components/ConfirmationModal';
 import NoteCard from './components/NoteCard';
-import ToastContainer from './components/ToastContainer'; // This import is now correct
+import ToastContainer from './components/ToastContainer';
 import OnboardingModal from './components/OnboardingModal';
 import SkeletonLoader from './components/SkeletonLoader';
 import LandingPage from './components/LandingPage';
 import LoginModal from './components/LoginModal';
 import AppLoader from './components/AppLoader';
 import { InstallButton } from './components/InstallButton';
+import SetPasswordModal from './components/SetPasswordModal';
 
 import { auth, db, googleProvider } from '@/firebase';
+import { TIMINGS, TIME, DEFAULTS, DEFAULT_CATEGORIES, DEFAULT_QUICK_ACTIONS, STORAGE_KEYS } from '@/constants';
+import { formatTimeAgo, formatHeaderDate, toDatetimeLocal, isToday, isYesterday, isInCurrentWeek, isInCurrentMonth, isInCurrentYear, cleanDate } from '@/utils/dateUtils';
+import { getStoredNotes, saveStoredNotes, getStoredCategories, saveStoredCategories, getStoredQuickActions, saveStoredQuickActions, getLastSyncTime, saveLastSyncTime, getAppSettings, saveAppSettings, getRememberMe, getRememberedEmail, saveRememberMe } from '@/utils/storageUtils';
+import { sanitizeCategoryName, sanitizeQuickActionText, sanitizeNoteContent } from '@/utils/validationUtils';
+import { ERROR_MESSAGES, getAuthErrorMessage, getSuccessMessage } from '@/utils/errorMessages';
 import { 
   signInWithPopup, 
   signOut, 
@@ -56,17 +62,6 @@ const getUserInitials = (user: User | null): string => {
   if (user.email) return user.email[0].toUpperCase();
   return '?';
 };
-
-const DEFAULT_CATEGORIES: Category[] = [
-  { id: 'general', name: 'General' },
-  { id: 'work', name: 'Work' },
-  { id: 'ideas', name: 'Ideas' },
-];
-
-const DEFAULT_QUICK_ACTIONS: QuickAction[] = [
-  { id: 'qa1', text: 'Meeting notes', categoryId: 'work' },
-  { id: 'qa2', text: 'Grocery list', categoryId: 'general' },
-];
 
 const THEMES = {
   default: {
@@ -224,7 +219,9 @@ const App: React.FC = () => {
   const [showQAManager, setShowQAManager] = useState(false);
   const [showMobileAdd, setShowMobileAdd] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showClearAllNotesConfirm, setShowClearAllNotesConfirm] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
 
   // Dev helper: allow opening onboarding from window.__openOnboarding() for headless testing
   useEffect(() => {
@@ -753,41 +750,41 @@ const App: React.FC = () => {
   };
 
   const handleSaveSettings = async () => {
-    const finalAppName = appName.trim() || "Quick Notes";
-    const finalAppSubtitle = appSubtitle.trim() || "Capture ideas instantly";
+    const finalAppName = appName.trim() || DEFAULTS.APP_NAME;
+    const finalAppSubtitle = appSubtitle.trim() || DEFAULTS.APP_SUBTITLE;
 
     setAppName(finalAppName);
     setAppSubtitle(finalAppSubtitle);
-    // Explicitly save to localStorage for immediate offline persistence
-    localStorage.setItem('app_name', finalAppName);
-    localStorage.setItem('app_subtitle', finalAppSubtitle);
-    localStorage.setItem('app_theme', appTheme);
-    // Explicitly save to localStorage for immediate offline persistence
-    localStorage.setItem('app_name', finalAppName);
-    localStorage.setItem('app_subtitle', finalAppSubtitle);
-    localStorage.setItem('app_theme', appTheme);
-    localStorage.setItem('qn_settings_updated', Date.now().toString());
+    
+    // Save to localStorage once for immediate offline persistence
+    const settingsUpdatedTime = Date.now();
+    saveAppSettings({
+      appName: finalAppName,
+      appSubtitle: finalAppSubtitle,
+      appTheme: appTheme,
+      darkMode: darkMode
+    });
+    localStorage.setItem(STORAGE_KEYS.SETTINGS_UPDATED, settingsUpdatedTime.toString());
 
-    if (user && db) {
-      if (isOnline) {
-        setSyncStatus('syncing');
-        try {
-          await setDoc(doc(db, `users/${user.uid}/settings/general`), {
-              appName: finalAppName,
-              appSubtitle: finalAppSubtitle,
-              appTheme,
-              darkMode,
-              lastUpdated: Date.now()
-          }, { merge: true });
-          setSyncStatus('idle');
-          setLastSyncTime(Date.now());
-        } catch (e) {
-          setSyncStatus('error');
-        }
+    if (user && db && isOnline) {
+      setSyncStatus('syncing');
+      try {
+        await setDoc(doc(db, `users/${user.uid}/settings/general`), {
+          appName: finalAppName,
+          appSubtitle: finalAppSubtitle,
+          appTheme,
+          darkMode,
+          lastUpdated: settingsUpdatedTime
+        }, { merge: true });
+        setSyncStatus('idle');
+        setLastSyncTime(settingsUpdatedTime);
+      } catch (e) {
+        setSyncStatus('error');
+        showToast(ERROR_MESSAGES.SETTINGS.SAVE_FAILED, 'error');
       }
     }
     setShowSettings(false);
-    showToast('Settings saved');
+    showToast(getSuccessMessage('settings-saved'));
   };
 
   const toggleDarkMode = () => {
@@ -1207,6 +1204,40 @@ const App: React.FC = () => {
     e.target.value = '';
   };
 
+  const handleClearAllNotes = async () => {
+    if (!user || !db) {
+      // Handle local-only mode
+      setNotes([]);
+      saveStoredNotes([]);
+      showToast('All local notes have been cleared.');
+      return;
+    }
+
+    if (!isOnline) {
+      showToast('You must be online to clear all notes.', 'error');
+      return;
+    }
+
+    setSyncStatus('syncing');
+    showToast('Clearing all notes...', 'info');
+
+    try {
+      const notesRef = collection(db, `users/${user.uid}/notes`);
+      const querySnapshot = await getDocs(notesRef);
+      const batch = writeBatch(db);
+      querySnapshot.forEach((doc) => {
+        batch.delete(doc.ref);
+      });
+      await batch.commit();
+      showToast('All notes have been successfully deleted.');
+    } catch (error) {
+      console.error('Failed to clear all notes:', error);
+      showToast(ERROR_MESSAGES.NOTES.DELETE_FAILED, 'error');
+    } finally {
+      setSyncStatus('idle');
+    }
+  };
+
   const filteredNotes = useMemo(() => {
     return notes.filter(note => {
       if (note.deletedAt && selectedNoteIds.size === 0) return false; // Hide soft-deleted notes unless in selection mode
@@ -1433,6 +1464,17 @@ const App: React.FC = () => {
                         <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                         Settings
                       </button>
+                      {user?.providerData?.[0]?.providerId === 'google.com' && (
+                        <button
+                          onClick={() => { setShowSetPasswordModal(true); setIsMenuOpen(false); }}
+                          className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-blue-600 dark:text-blue-400 flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                          Set Password
+                        </button>
+                      )}
                       <button onClick={() => { setShowOnboarding(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-indigo-400 font-semibold flex items-center gap-2">
                         <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         Show Demo
@@ -1783,6 +1825,16 @@ const App: React.FC = () => {
                     <input type="file" className="hidden" accept=".json" onChange={handleImportData} />
                   </label>
                 </div>
+                <div className="border-t border-gray-100 dark:border-gray-700 my-4"></div>
+                <div>
+                  <button
+                    onClick={() => { setShowClearAllNotesConfirm(true); setShowSettings(false); }}
+                    className="w-full py-2.5 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-medium rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors flex items-center justify-center gap-2 text-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    Clear All Notes
+                  </button>
+                </div>
               </div>
             </div>
           </Modal>
@@ -2023,6 +2075,23 @@ const App: React.FC = () => {
             confirmText="Delete"
             isDestructive={true}
             syncStatus={syncStatus}
+          />
+          <ConfirmationModal
+            isOpen={showClearAllNotesConfirm}
+            onClose={() => setShowClearAllNotesConfirm(false)}
+            onConfirm={handleClearAllNotes}
+            title="Clear All Notes?"
+            message="This is a permanent action and will delete all of your notes from this account. This cannot be undone. Are you absolutely sure?"
+            confirmText="Yes, Delete All"
+            isDestructive={true}
+            syncStatus={syncStatus}
+          />
+          <SetPasswordModal
+            isOpen={showSetPasswordModal}
+            onClose={() => setShowSetPasswordModal(false)}
+            user={user}
+            onSuccess={showToast}
+            onError={(msg) => showToast(msg, 'error')}
           />
         </>
       )}

@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import ErrorBoundary from './components/ErrorBoundary';
 import './styles/index.css';
 import { InstallPWAProvider } from '@/InstallPWAContext';
 
@@ -12,8 +13,10 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <InstallPWAProvider>
-      <App />
-    </InstallPWAProvider>
+    <ErrorBoundary>
+      <InstallPWAProvider>
+        <App />
+      </InstallPWAProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );

@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
 import InputWithIcon from './InputWithIcon';
 import { Eye, EyeOff } from 'lucide-react';
+import { isValidEmail } from '../utils/validationUtils';
+import { ERROR_MESSAGES } from '../utils/errorMessages';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -43,6 +45,28 @@ const LoginModal: React.FC<LoginModalProps> = ({
   authLoadingSource
 }) => {
   const [showPassword, setShowPassword] = useState(false);
+  const [emailError, setEmailError] = useState('');
+
+  // Clear password after modal closes for security
+  useEffect(() => {
+    if (!isOpen) {
+      // Password will be cleared by parent component
+      setShowPassword(false);
+      setEmailError('');
+    }
+  }, [isOpen]);
+
+  const handleEmailChange = (email: string) => {
+    setAuthEmail(email);
+    // Validate email in real-time
+    if (email && !isValidEmail(email)) {
+      setEmailError(ERROR_MESSAGES.AUTH.INVALID_EMAIL);
+    } else {
+      setEmailError('');
+    }
+  };
+
+  const isEmailValid = !authEmail || isValidEmail(authEmail);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={isSignUp ? "Create Account" : "Sign In"}>
@@ -77,7 +101,22 @@ const LoginModal: React.FC<LoginModalProps> = ({
 
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
-          <input type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="Email Address" className="w-full p-3 border border-borderLight dark:border-gray-600 rounded-xl focus:outline-none focus:border-primary text-sm bg-bgPage dark:bg-gray-700 dark:text-white" />
+          <input 
+            type="email" 
+            value={authEmail} 
+            onChange={(e) => handleEmailChange(e.target.value)} 
+            placeholder="Email Address" 
+            className={`w-full p-3 border rounded-xl focus:outline-none text-sm bg-bgPage dark:bg-gray-700 dark:text-white transition-colors ${
+              emailError 
+                ? 'border-red-500 focus:border-red-500' 
+                : 'border-borderLight dark:border-gray-600 focus:border-primary'
+            }`}
+            aria-invalid={!!emailError}
+            aria-describedby={emailError ? 'email-error' : undefined}
+          />
+          {emailError && (
+            <p id="email-error" className="text-xs text-red-500 mt-1">{emailError}</p>
+          )}
         </div>
 
         <div>
