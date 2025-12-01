@@ -526,11 +526,13 @@ const App: React.FC = () => {
 
       if (localSettingsUpdated > cloudSettingsUpdated) {
         // Local settings are newer, push to cloud
+        const storedSettings = getAppSettings();
+
         const localSettings = {
-          appName: localStorage.getItem('app_name') || "Quick Notes",
-          appSubtitle: localStorage.getItem('app_subtitle') || "Capture ideas instantly",
-          appTheme: localStorage.getItem('app_theme') || 'default',
-          darkMode: localStorage.theme === 'dark',
+          appName: storedSettings.appName || DEFAULTS.APP_NAME,
+          appSubtitle: storedSettings.appSubtitle || DEFAULTS.APP_SUBTITLE,
+          appTheme: storedSettings.appTheme || 'default',
+          darkMode: storedSettings.darkMode,
           lastUpdated: localSettingsUpdated
         };
         batch.set(settingsRef, localSettings, { merge: true });
@@ -794,10 +796,15 @@ const App: React.FC = () => {
   const toggleDarkMode = () => {
     const newMode = !darkMode;
     setDarkMode(newMode);
-    
-    if (user && db) {
-        setDoc(doc(db, `users/${user.uid}/settings/general`), { darkMode: newMode, lastUpdated: Date.now() }, { merge: true })
-            .catch(() => console.error("Failed to sync theme preference"));
+
+    // Update localStorage immediately for offline persistence and sync detection
+    const settingsUpdatedTime = Date.now();
+    localStorage.theme = newMode ? 'dark' : 'light'; // Update the theme in localStorage
+    localStorage.setItem(STORAGE_KEYS.SETTINGS_UPDATED, settingsUpdatedTime.toString()); // Mark settings as updated
+
+    if (user && db && isOnline) { // Only attempt Firestore update if online
+        setDoc(doc(db, `users/${user.uid}/settings/general`), { darkMode: newMode, lastUpdated: settingsUpdatedTime }, { merge: true })
+            .catch((e) => console.error("Failed to sync theme preference:", e));
     }
   };
 
