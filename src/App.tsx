@@ -164,8 +164,6 @@ const App: React.FC = () => {
 
   const [appLoadingMessage, setAppLoadingMessage] = useState<string | null>(null);
   const [notes, setNotes] = useState<Note[]>(() => {
-    // This is a one-time read on component mount.
-    // The actual data will be populated by the useEffect that listens to Firestore.
     if (typeof window === 'undefined') return [];
     try {
       const saved = localStorage.getItem('qn_notes');
@@ -892,11 +890,10 @@ const App: React.FC = () => {
   };
 
   const handleUpdateNote = async (id: string, content: string, categoryId: string, timestamp: number, silent: boolean = false) => {
-    const updatedNote = { id, content, categoryId, timestamp };
-    const newTimestamp = Date.now(); // Always generate a new timestamp for the update
+    const updatedTimestamp = timestamp || Date.now(); // Use provided timestamp, or now if not provided
 
     setNotes(prev => {
-      const updatedNotes = prev.map(n => n.id === id ? { ...n, content, categoryId, timestamp: newTimestamp } : n);
+      const updatedNotes = prev.map(n => n.id === id ? { ...n, content, categoryId, timestamp: updatedTimestamp } : n);
       localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
       return updatedNotes;
     });
@@ -904,7 +901,7 @@ const App: React.FC = () => {
     if (user && db && isOnline) {
         if (!silent) setSyncStatus('syncing');
         try {
-          await setDoc(doc(db, `users/${user.uid}/notes`, id), { ...updatedNote, timestamp: newTimestamp }, { merge: true });
+          await setDoc(doc(db, `users/${user.uid}/notes`, id), { content, categoryId, timestamp: updatedTimestamp }, { merge: true });
           setSyncStatus('idle');
           if (!silent) setLastSyncTime(Date.now());
         } catch (e) {
