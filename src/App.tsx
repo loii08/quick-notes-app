@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { Routes, Route, Link, useLocation, Outlet, Navigate } from 'react-router-dom';
 import { Note, Category, QuickAction, FilterMode, ToastMessage, ToastType } from './types';
 import Modal from './components/Modal';
 import ConfirmationModal from './components/ConfirmationModal';
@@ -9,7 +10,10 @@ import SkeletonLoader from './components/SkeletonLoader';
 import LandingPage from './components/LandingPage';
 import LoginModal from './components/LoginModal';
 import AppLoader from './components/AppLoader';
-import { InstallButton } from './components/InstallButton';
+import AdminRoute from './AdminRoute';
+import AdminDashboard from './AdminDashboard';
+import UserList from './UserList';
+import NotAuthorized from './NotAuthorized';
 import SetPasswordModal from './components/SetPasswordModal';
 
 import { auth, db, googleProvider } from '@/firebase';
@@ -35,7 +39,8 @@ import {
   doc, 
   setDoc, 
   deleteDoc,
-  getDoc, 
+  getDoc,
+  serverTimestamp, 
   writeBatch
 } from 'firebase/firestore';
 import { getDocs } from 'firebase/firestore';
@@ -149,6 +154,7 @@ const THEMES = {
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
+  const [userRole, setUserRole] = useState<string>('user');
   const [isFirebaseReady, setIsFirebaseReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [isInitialDataLoading, setIsInitialDataLoading] = useState(true);
@@ -312,6 +318,7 @@ const App: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setIsFirebaseReady(true);
+      if (!currentUser) setUserRole('user'); // Reset role on logout
       
       if (!currentUser) {
         setIsInitialDataLoading(false);
@@ -337,6 +344,30 @@ const App: React.FC = () => {
     });
     return () => unsubscribe();
   }, []);
+
+  // Effect to create/update user profile in Firestore on login
+  useEffect(() => {
+    if (!user || !db) return;
+
+    const userDocRef = doc(db, 'users', user.uid);
+
+    const updateUserProfile = async () => {
+      const docSnap = await getDoc(userDocRef);
+      if (docSnap.exists()) {
+        // User exists, just update last login time
+        await setDoc(userDocRef, {
+          lastLogin: new Date(user.metadata.lastSignInTime || Date.now())
+        }, { merge: true });
+      } else {
+        // New user, create profile
+        await setDoc(userDocRef, {
+          uid: user.uid, displayName: user.displayName || user.email?.split('@')[0], email: user.email, role: 'user', status: 'active', createdAt: serverTimestamp(), lastLogin: new Date(user.metadata.lastSignInTime || Date.now())
+        });
+      }
+    };
+
+    updateUserProfile();
+  }, [user]);
 
   // Migration: remove any previously stored raw password key if present
   useEffect(() => {
@@ -410,11 +441,20 @@ const App: React.FC = () => {
         }
     });
 
+    // Fetch user role
+    const userDocRef = doc(db, `users/${user.uid}`);
+    const userDocUnsub = onSnapshot(userDocRef, (doc) => {
+      if (doc.exists() && doc.data().role) {
+        setUserRole(doc.data().role);
+      }
+    });
+
     return () => {
       notesUnsub();
       catsUnsub();
       qaUnsub();
       settingsUnsub();
+      userDocUnsub();
     };
   }, [user]);
 
@@ -1416,6 +1456,8 @@ const App: React.FC = () => {
     });
   };
 
+  const location = useLocation();
+
   if (!isFirebaseReady) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-bgPage dark:bg-gray-900">
@@ -1425,24 +1467,24 @@ const App: React.FC = () => {
 
   return (
     <>
-    {appLoadingMessage && <AppLoader />}
-    <div className={`min-h-screen flex flex-col font-sans text-textMain dark:text-gray-100 bg-bgPage transition-colors duration-300 ${appLoadingMessage ? 'opacity-0' : 'opacity-100'}`}>
-      {showBackOnlineBanner ? (
-        <div className="bg-green-500 text-center py-2 text-white font-semibold fixed top-0 w-full z-[100] animate-fade-in">
-          <button onClick={syncOfflineChanges} className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 rounded-md px-2 py-0.5 text-xs">Sync Now</button>
-          <div className="flex items-center justify-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-            Back online
+      {appLoadingMessage && <AppLoader />}
+      <div className={`min-h-screen flex flex-col font-sans text-textMain dark:text-gray-100 bg-bgPage transition-colors duration-300 ${appLoadingMessage ? 'opacity-0' : 'opacity-100'}`}>
+        {showBackOnlineBanner ? (
+          <div className="bg-green-500 text-center py-2 text-white font-semibold fixed top-0 w-full z-[100] animate-fade-in">
+            <button onClick={syncOfflineChanges} className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 rounded-md px-2 py-0.5 text-xs">Sync Now</button>
+            <div className="flex items-center justify-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              Back online
+            </div>
           </div>
-        </div>
-      ) : !isOnline && (
-        <div className="bg-red-500 text-center py-2 text-white font-semibold fixed top-0 w-full z-[100] animate-fade-in">
-          <div className="flex items-center justify-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636a9 9 0 010 12.728m-12.728 0a9 9 0 010-12.728m12.728 0L5.636 18.364m0-12.728L18.364 5.636" /></svg>
-            You are currently offline.
+        ) : !isOnline && (
+          <div className="bg-red-500 text-center py-2 text-white font-semibold fixed top-0 w-full z-[100] animate-fade-in">
+            <div className="flex items-center justify-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636a9 9 0 010 12.728m-12.728 0a9 9 0 010-12.728m12.728 0L5.636 18.364m0-12.728L18.364 5.636" /></svg>
+              You are currently offline.
+            </div>
           </div>
-        </div>
-      )}
+        )}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
       {!user && showOnboarding && (
         <OnboardingModal isOpen={showOnboarding} onClose={() => setShowOnboarding(false)} />
@@ -1530,7 +1572,6 @@ const App: React.FC = () => {
                       <span className={`inline-block w-4 h-4 transform bg-white dark:bg-gray-400 rounded-full transition-transform ${darkMode ? 'translate-x-6' : 'translate-x-1'}`} />
                     </button>
                   </div>
-                  <InstallButton />
                   {user && (
                     <>
                       <button onClick={() => { setShowSettings(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
@@ -1556,6 +1597,12 @@ const App: React.FC = () => {
                         Show Demo
                       </button>
                     </>
+                  )}
+                  {user && userRole === 'admin' && (
+                    <Link to="/admin" onClick={() => setIsMenuOpen(false)} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                      Admin Dashboard
+                    </Link>
                   )}
                   <div className="border-t border-borderLight dark:border-gray-700 my-1"></div>
                   {user ? (
@@ -2249,9 +2296,46 @@ const App: React.FC = () => {
         </button>
       )}
 
-    </div>
+      </div>
     </>
   );
 };
 
-export default App;
+const AppRoutes: React.FC = () => {
+  const [userRole, setUserRole] = useState('user');
+  const [user, setUser] = useState<User | null>(auth.currentUser);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (!currentUser) setUserRole('user');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (user && db) { // This effect now depends on the user state from onAuthStateChanged
+      const userDocRef = doc(db, `users/${user.uid}`);
+      const unsub = onSnapshot(userDocRef, (doc) => {
+        if (doc.exists() && doc.data().role) {
+          setUserRole(doc.data().role);
+        }
+      });
+      return () => unsub();
+    }
+  }, [user]);
+
+  return (
+    <Routes>
+      <Route path="/*" element={<App />} />
+      <Route path="/not-authorized" element={<NotAuthorized />} />
+      <Route path="/admin" element={<AdminRoute userRole={userRole}><AdminDashboard /></AdminRoute>}>
+        <Route index element={<Navigate to="users" replace />} />
+        {/* The UserList component will be created in the next step */}
+        <Route path="users" element={<UserList />} />
+      </Route>
+    </Routes>
+  )
+}
+
+export default AppRoutes;

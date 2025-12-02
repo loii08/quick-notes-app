@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+import { BrowserRouter } from 'react-router-dom';
+import AppRoutes from './App';
 import ErrorBoundary from './components/ErrorBoundary';
 import './styles/index.css';
 import { InstallPWAProvider } from '@/InstallPWAContext';
@@ -15,7 +16,9 @@ root.render(
   <React.StrictMode>
     <ErrorBoundary>
       <InstallPWAProvider>
-        <App />
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
       </InstallPWAProvider>
     </ErrorBoundary>
   </React.StrictMode>
