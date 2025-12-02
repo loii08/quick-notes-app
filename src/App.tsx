@@ -11,6 +11,7 @@ import LandingPage from './components/LandingPage';
 import LoginModal from './components/LoginModal';
 import AppLoader from './components/AppLoader';
 import AdminRoute from './AdminRoute';
+import { useAuthStatus } from './useAuthStatus';
 import AdminDashboard from './AdminDashboard';
 import UserList from './UserList';
 import NotAuthorized from './NotAuthorized';
@@ -2302,34 +2303,17 @@ const App: React.FC = () => {
 };
 
 const AppRoutes: React.FC = () => {
-  const [userRole, setUserRole] = useState('user');
-  const [user, setUser] = useState<User | null>(auth.currentUser);
-
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      if (!currentUser) setUserRole('user');
-    });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (user && db) { // This effect now depends on the user state from onAuthStateChanged
-      const userDocRef = doc(db, `users/${user.uid}`);
-      const unsub = onSnapshot(userDocRef, (doc) => {
-        if (doc.exists() && doc.data().role) {
-          setUserRole(doc.data().role);
-        }
-      });
-      return () => unsub();
-    }
-  }, [user]);
+  const { user, userRole, authLoading } = useAuthStatus();
+ 
+  if (authLoading) {
+    return <AppLoader />; // Or any full-screen loader
+  }
 
   return (
     <Routes>
       <Route path="/*" element={<App />} />
       <Route path="/not-authorized" element={<NotAuthorized />} />
-      <Route path="/admin" element={<AdminRoute userRole={userRole}><AdminDashboard /></AdminRoute>}>
+      <Route path="/admin" element={<AdminRoute user={user} userRole={userRole}><AdminDashboard /></AdminRoute>}>
         <Route index element={<Navigate to="users" replace />} />
         {/* The UserList component will be created in the next step */}
         <Route path="users" element={<UserList />} />
