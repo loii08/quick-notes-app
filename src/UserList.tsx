@@ -39,7 +39,8 @@ const USERS_PER_PAGE = 10;
 
 const UserList: React.FC = () => {
   const [users, setUsers] = useState<AppUser[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(false); // for refresh/pagination
   const [error, setError] = useState<string | null>(null);
   const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [isLastPage, setIsLastPage] = useState(false);
@@ -59,8 +60,10 @@ const UserList: React.FC = () => {
     fetchUsers();
   }, []);
 
-  const fetchUsers = async (nextPage = false) => {
-    setLoading(true);
+  const fetchUsers = async (nextPage = false, silent = false) => {
+    if (!silent) setInitialLoading(true);
+    else setListLoading(true);
+
     try {
       const usersCollectionRef = collection(db, 'users');
       let q = query(usersCollectionRef, orderBy('createdAt', 'desc'), limit(USERS_PER_PAGE));
@@ -83,7 +86,8 @@ const UserList: React.FC = () => {
       console.error('Error fetching users:', err);
       setError('Permission denied. You must be an admin to view this list.');
     } finally {
-      setLoading(false);
+      if (!silent) setInitialLoading(false);
+      else setListLoading(false);
     }
   };
 
@@ -112,7 +116,7 @@ const UserList: React.FC = () => {
     try {
       await updateDoc(userDocRef, { role: newRole });
       showToast(`User role changed to ${newRole}.`);
-      fetchUsers();
+      fetchUsers(false, true);
     } catch {
       showToast('Failed to change user role.', 'error');
     }
@@ -123,7 +127,7 @@ const UserList: React.FC = () => {
     try {
       await deleteDoc(userDocRef);
       showToast('User profile deleted successfully.');
-      fetchUsers();
+      fetchUsers(false, true);
     } catch {
       showToast('Failed to delete user profile.', 'error');
     }
@@ -137,22 +141,6 @@ const UserList: React.FC = () => {
       return newSet;
     });
   };
-
-  if (loading) {
-    return (
-      <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-4 sm:p-6">
-        <UserListSkeleton />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded" role="alert">
-        {error}
-      </div>
-    );
-  }
 
   const filteredUsers = users.filter(user =>
     user.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -179,189 +167,195 @@ const UserList: React.FC = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
             </svg>
           </div>
-          <button onClick={() => fetchUsers()} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors" title="Refresh Users">
-  <ArrowPathIcon className="w-5 h-5 text-gray-500" />
-</button>
+          <button
+            onClick={() => fetchUsers(false, true)}
+            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            title="Refresh Users"
+          >
+            <ArrowPathIcon className="w-5 h-5 text-gray-500" />
+          </button>
         </div>
       </div>
 
       {/* Desktop Table */}
       <div className="overflow-x-auto hidden md:block">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead className="bg-gray-50 dark:bg-gray-700">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Name</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            {filteredUsers.map(user => {
-              const isExpanded = expandedRows.has(user.uid);
-              return (
-                <React.Fragment key={user.uid}>
-                  <tr className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" onClick={() => toggleRow(user.uid)}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">{user.displayName}</div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">{user.email}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'}`}>
-                        {user.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium flex gap-2">
-                      <button
-                        onClick={e => {
-                          e.stopPropagation();
-                          toggleRow(user.uid);
-                        }}
-                        className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200"
-                      >
-                        {isExpanded ? 'Collapse' : 'Show More'}
-                      </button>
-                    </td>
-                  </tr>
-
-                  {isExpanded && (
-                    <tr className="bg-gray-50 dark:bg-gray-700/50">
-                      <td colSpan={3} className="px-6 py-4">
-                        {/* Small Cards */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
-                          <div className="bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-300 p-2 rounded-md text-center text-sm font-semibold">
-                            Notes: {user.notesCount ?? 0}
-                          </div>
-                          <div className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 p-2 rounded-md text-center text-sm font-semibold">
-                            Categories: {user.categoryCount ?? 0}
-                          </div>
-                          <div className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-300 p-2 rounded-md text-center text-sm font-semibold">
-                            Quick Actions: {user.quickActionCount ?? 0}
-                          </div>
-                        </div>
-
-                        {/* Other details */}
-                        <div className="space-y-1 text-sm text-gray-700 dark:text-gray-300 mb-2">
-                          <div><strong>Role:</strong> {user.role}</div>
-                          <div><strong>Created On:</strong> {formatDate(user.createdAt)}</div>
-                          <div><strong>Last Login:</strong> {formatDate(user.lastLogin)}</div>
-                          <div><strong>Last Update:</strong> {formatDate(user.lastUpdate)}</div>
-                        </div>
-
-                        {/* Action buttons */}
-                        <div className="flex gap-4">
-                          <button
-                            onClick={() => setConfirmAction({
-                              action: 'roleChange',
-                              user,
-                              onConfirm: () => handleRoleChange(user.uid, user.role),
-                              message: `Are you sure you want to change this user's role to ${user.role === 'admin' ? 'user' : 'admin'}?`
-                            })}
-                            className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200"
-                          >
-                            {user.role === 'admin' ? 'Demote' : 'Promote'}
-                          </button>
-                          <button
-                            onClick={() => setConfirmAction({
-                              action: 'delete',
-                              user,
-                              onConfirm: () => handleDeleteUser(user.uid),
-                              message: "Are you sure you want to delete this user's profile? This does not delete their authentication account."
-                            })}
-                            className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200"
-                          >
-                            Delete
-                          </button>
-                        </div>
+        {(initialLoading || listLoading) ? (
+          <UserListSkeleton />
+        ) : (
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-700">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+              {filteredUsers.map(user => {
+                const isExpanded = expandedRows.has(user.uid);
+                return (
+                  <React.Fragment key={user.uid}>
+                    <tr className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" onClick={() => toggleRow(user.uid)}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="text-sm font-medium text-gray-900 dark:text-white">{user.displayName}</div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">{user.email}</div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'}`}>
+                          {user.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium flex gap-2">
+                        <button
+                          onClick={e => {
+                            e.stopPropagation();
+                            toggleRow(user.uid);
+                          }}
+                          className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200"
+                        >
+                          {isExpanded ? 'Collapse' : 'Show More'}
+                        </button>
                       </td>
                     </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+
+                    {isExpanded && (
+                      <tr className="bg-gray-50 dark:bg-gray-700/50">
+                        <td colSpan={3} className="px-6 py-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+                            <div className="bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-300 p-2 rounded-md text-center text-sm font-semibold">
+                              Notes: {user.notesCount ?? 0}
+                            </div>
+                            <div className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 p-2 rounded-md text-center text-sm font-semibold">
+                              Categories: {user.categoryCount ?? 0}
+                            </div>
+                            <div className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-300 p-2 rounded-md text-center text-sm font-semibold">
+                              Quick Actions: {user.quickActionCount ?? 0}
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 text-sm text-gray-700 dark:text-gray-300 mb-2">
+                            <div><strong>Role:</strong> {user.role}</div>
+                            <div><strong>Created On:</strong> {formatDate(user.createdAt)}</div>
+                            <div><strong>Last Login:</strong> {formatDate(user.lastLogin)}</div>
+                            <div><strong>Last Update:</strong> {formatDate(user.lastUpdate)}</div>
+                          </div>
+
+                          <div className="flex gap-4">
+                            <button
+                              onClick={() => setConfirmAction({
+                                action: 'roleChange',
+                                user,
+                                onConfirm: () => handleRoleChange(user.uid, user.role),
+                                message: `Are you sure you want to change this user's role to ${user.role === 'admin' ? 'user' : 'admin'}?`
+                              })}
+                              className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200"
+                            >
+                              {user.role === 'admin' ? 'Demote' : 'Promote'}
+                            </button>
+                            <button
+                              onClick={() => setConfirmAction({
+                                action: 'delete',
+                                user,
+                                onConfirm: () => handleDeleteUser(user.uid),
+                                message: "Are you sure you want to delete this user's profile? This does not delete their authentication account."
+                              })}
+                              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* Mobile Card View */}
       <div className="grid grid-cols-1 gap-4 md:hidden">
-        {filteredUsers.map(user => {
-          const isExpanded = expandedRows.has(user.uid);
-          return (
-            <div key={user.uid} className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="font-bold text-gray-900 dark:text-white">{user.displayName}</div>
-                  <div className="text-sm text-gray-500 dark:text-gray-400">{user.email}</div>
+        {(initialLoading || listLoading) ? <UserListSkeleton /> :
+          filteredUsers.map(user => {
+            const isExpanded = expandedRows.has(user.uid);
+            return (
+              <div key={user.uid} className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="font-bold text-gray-900 dark:text-white">{user.displayName}</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">{user.email}</div>
+                  </div>
+                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'}`}>
+                    {user.status}
+                  </span>
                 </div>
-                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'}`}>
-                  {user.status}
-                </span>
+
+                {isExpanded && (
+                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+                      <div className="bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-300 p-2 rounded-md text-center text-sm font-semibold">
+                        Notes: {user.notesCount ?? 0}
+                      </div>
+                      <div className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 p-2 rounded-md text-center text-sm font-semibold">
+                        Categories: {user.categoryCount ?? 0}
+                      </div>
+                      <div className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-300 p-2 rounded-md text-center text-sm font-semibold">
+                        Quick Actions: {user.quickActionCount ?? 0}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 text-sm text-gray-700 dark:text-gray-300 mb-2">
+                      <div><strong>Role:</strong> {user.role}</div>
+                      <div><strong>Created On:</strong> {formatDate(user.createdAt)}</div>
+                      <div><strong>Last Login:</strong> {formatDate(user.lastLogin)}</div>
+                      <div><strong>Last Update:</strong> {formatDate(user.lastUpdate)}</div>
+                    </div>
+
+                    <div className="flex gap-4">
+                      <button
+                        onClick={() => setConfirmAction({
+                          action: 'roleChange',
+                          user,
+                          onConfirm: () => handleRoleChange(user.uid, user.role),
+                          message: `Are you sure you want to change this user's role to ${user.role === 'admin' ? 'user' : 'admin'}?`
+                        })}
+                        className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200"
+                      >
+                        {user.role === 'admin' ? 'Demote' : 'Promote'}
+                      </button>
+                      <button
+                        onClick={() => setConfirmAction({
+                          action: 'delete',
+                          user,
+                          onConfirm: () => handleDeleteUser(user.uid),
+                          message: "Are you sure you want to delete this user's profile? This does not delete their authentication account."
+                        })}
+                        className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => toggleRow(user.uid)}
+                  className="mt-2 text-sm text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200"
+                >
+                  {isExpanded ? 'Collapse' : 'Show More'}
+                </button>
               </div>
-
-              {isExpanded && (
-                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
-                    <div className="bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-300 p-2 rounded-md text-center text-sm font-semibold">
-                      Notes: {user.notesCount ?? 0}
-                    </div>
-                    <div className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 p-2 rounded-md text-center text-sm font-semibold">
-                      Categories: {user.categoryCount ?? 0}
-                    </div>
-                    <div className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-300 p-2 rounded-md text-center text-sm font-semibold">
-                      Quick Actions: {user.quickActionCount ?? 0}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1 text-sm text-gray-700 dark:text-gray-300 mb-2">
-                    <div><strong>Role:</strong> {user.role}</div>
-                    <div><strong>Created On:</strong> {formatDate(user.createdAt)}</div>
-                    <div><strong>Last Login:</strong> {formatDate(user.lastLogin)}</div>
-                    <div><strong>Last Update:</strong> {formatDate(user.lastUpdate)}</div>
-                  </div>
-
-                  <div className="flex gap-4">
-                    <button
-                      onClick={() => setConfirmAction({
-                        action: 'roleChange',
-                        user,
-                        onConfirm: () => handleRoleChange(user.uid, user.role),
-                        message: `Are you sure you want to change this user's role to ${user.role === 'admin' ? 'user' : 'admin'}?`
-                      })}
-                      className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200"
-                    >
-                      {user.role === 'admin' ? 'Demote' : 'Promote'}
-                    </button>
-                    <button
-                      onClick={() => setConfirmAction({
-                        action: 'delete',
-                        user,
-                        onConfirm: () => handleDeleteUser(user.uid),
-                        message: "Are you sure you want to delete this user's profile? This does not delete their authentication account."
-                      })}
-                      className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <button
-                onClick={() => toggleRow(user.uid)}
-                className="mt-2 text-sm text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200"
-              >
-                {isExpanded ? 'Collapse' : 'Show More'}
-              </button>
-            </div>
-          );
-        })}
+            );
+          })}
       </div>
 
       {/* Pagination */}
       <div className="pt-4 flex justify-end">
         <button
-          onClick={() => fetchUsers(true)}
-          disabled={isLastPage || loading}
+          onClick={() => fetchUsers(true, true)}
+          disabled={isLastPage || listLoading}
           className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primaryDark disabled:bg-gray-400 disabled:cursor-not-allowed"
         >
           Next Page
