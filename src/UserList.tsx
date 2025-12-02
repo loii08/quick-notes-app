@@ -292,53 +292,48 @@ const UserList: React.FC = () => {
                   </span>
                 </div>
 
-                {isExpanded && (
-                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
-                      <div className="bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-300 p-2 rounded-md text-center text-sm font-semibold">
-                        Notes: {user.notesCount ?? 0}
-                      </div>
-                      <div className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 p-2 rounded-md text-center text-sm font-semibold">
-                        Categories: {user.categoryCount ?? 0}
-                      </div>
-                      <div className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-300 p-2 rounded-md text-center text-sm font-semibold">
-                        Quick Actions: {user.quickActionCount ?? 0}
-                      </div>
+                <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isExpanded ? 'max-h-96 mt-4 pt-4 border-t border-gray-200 dark:border-gray-600' : 'max-h-0'}`}>
+                  <div className="grid grid-cols-3 gap-2 text-sm text-gray-700 dark:text-gray-300 mb-4">
+                    {/* Column 1: Labels */}
+                    <div className="col-span-1 space-y-2 font-semibold text-gray-500 dark:text-gray-400">
+                      <div>Role:</div>
+                      <div>Created On:</div>
+                      <div>Last Login:</div>
+                      <div>Last Update:</div>
                     </div>
-
-                    <div className="space-y-1 text-sm text-gray-700 dark:text-gray-300 mb-2">
-                      <div><strong>Role:</strong> {user.role}</div>
-                      <div><strong>Created On:</strong> {formatDate(user.createdAt)}</div>
-                      <div><strong>Last Login:</strong> {formatDate(user.lastLogin)}</div>
-                      <div><strong>Last Update:</strong> {formatDate(user.lastUpdate)}</div>
-                    </div>
-
-                    <div className="flex gap-4">
-                      <button
-                        onClick={() => setConfirmAction({
-                          action: 'roleChange',
-                          user,
-                          onConfirm: () => handleRoleChange(user.uid, user.role),
-                          message: `Are you sure you want to change this user's role to ${user.role === 'admin' ? 'user' : 'admin'}?`
-                        })}
-                        className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200"
-                      >
-                        {user.role === 'admin' ? 'Demote' : 'Promote'}
-                      </button>
-                      <button
-                        onClick={() => setConfirmAction({
-                          action: 'delete',
-                          user,
-                          onConfirm: () => handleDeleteUser(user.uid),
-                          message: "Are you sure you want to delete this user's profile? This does not delete their authentication account."
-                        })}
-                        className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200"
-                      >
-                        Delete
-                      </button>
+                    {/* Column 2: Values */}
+                    <div className="col-span-2 space-y-2 text-right font-medium text-gray-800 dark:text-gray-200">
+                      <div className="truncate">{user.role}</div>
+                      <div className="truncate">{formatDate(user.createdAt)}</div>
+                      <div className="truncate">{formatDate(user.lastLogin)}</div>
+                      <div className="truncate">{formatDate(user.lastUpdate)}</div>
                     </div>
                   </div>
-                )}
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => setConfirmAction({
+                        action: 'roleChange',
+                        user,
+                        onConfirm: () => handleRoleChange(user.uid, user.role),
+                        message: `Are you sure you want to change this user's role to ${user.role === 'admin' ? 'user' : 'admin'}?`
+                      })}
+                      className="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-200 text-sm"
+                    >
+                      {user.role === 'admin' ? 'Demote' : 'Promote'}
+                    </button>
+                    <button
+                      onClick={() => setConfirmAction({
+                        action: 'delete',
+                        user,
+                        onConfirm: () => handleDeleteUser(user.uid),
+                        message: "Are you sure you want to delete this user's profile? This does not delete their authentication account."
+                      })}
+                      className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-200 text-sm"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
 
                 <button
                   onClick={() => toggleRow(user.uid)}
