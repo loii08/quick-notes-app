@@ -210,7 +210,7 @@ const App: React.FC = () => {
   });
 
   const [currentCategory, setCurrentCategory] = useState<string>('all');
-  const [filterMode, setFilterMode] = useState<FilterMode>('all');
+  const [filterMode, setFilterMode] = useState<FilterMode>('today');
   const [customDate, setCustomDate] = useState<string>('');
   const [inputValue, setInputValue] = useState('');
   const [isScrolled, setIsScrolled] = useState(false);
