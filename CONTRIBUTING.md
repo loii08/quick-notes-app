@@ -138,6 +138,8 @@ export const formatTimeAgo = (timestamp: number | null): string => {
 - [ ] Feature works on mobile
 - [ ] Feature works offline
 - [ ] Feature syncs correctly when back online
+- [x] Date filter defaults to today
+- [x] Quick Action filter and sort work as expected
 - [ ] No console errors
 - [ ] No TypeScript errors
 - [ ] Accessibility is maintained

@@ -256,6 +256,10 @@ const App: React.FC = () => {
   const [editingQAId, setEditingQAId] = useState<string | null>(null);
   const [editQAText, setEditQAText] = useState('');
   const [editQACat, setEditQACat] = useState('general');
+  
+  const [qaFilter, setQaFilter] = useState('');
+  const [qaSortOrder, setQaSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [qaSortKey, setQaSortKey] = useState<'text' | 'category'>('text');
 
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
 
@@ -1268,6 +1272,45 @@ const App: React.FC = () => {
     }
   };
 
+  const categoryNameMap = useMemo(() => {
+    return categories.reduce((acc, cat) => {
+      acc[cat.id] = cat.name;
+      return acc;
+    }, {} as Record<string, string>);
+  }, [categories]);
+
+  const filteredAndSortedQAs = useMemo(() => {
+    const sorted = [...quickActions]
+      .filter(qa => !qa.deletedAt)
+      .sort((a, b) => {
+        let compareA: string, compareB: string;
+        if (qaSortKey === 'category') {
+          compareA = categoryNameMap[a.categoryId] || '';
+          compareB = categoryNameMap[b.categoryId] || '';
+        } else { 
+          compareA = a.text;
+          compareB = b.text;
+        }
+
+        if (qaSortOrder === 'asc') {
+          return compareA.localeCompare(compareB);
+        }
+        return compareB.localeCompare(compareA);
+      });
+
+    if (!qaFilter) {
+      return sorted;
+    }
+
+    return sorted.filter(action =>
+      action.text.toLowerCase().includes(qaFilter.toLowerCase())
+    );
+  }, [quickActions, qaFilter, qaSortOrder, qaSortKey, categoryNameMap]);
+
+  const toggleQASortOrder = () => {
+    setQaSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+  };
+
   const filteredNotes = useMemo(() => {
     return notes.filter(note => {
       if (note.deletedAt && selectedNoteIds.size === 0) return false; // Hide soft-deleted notes unless in selection mode
@@ -2016,16 +2059,32 @@ const App: React.FC = () => {
               </div>
               <div className="border-t border-borderLight dark:border-gray-700 my-1"></div>
               <div>
-                <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">Existing Actions</h4>
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Existing Actions</h4>
+                  <div className="flex items-center gap-2">
+                    <select
+                      id="qa-sort-key-select"
+                      value={qaSortKey}
+                      onChange={(e) => setQaSortKey(e.target.value as 'text' | 'category')}
+                      className="px-2 py-1 text-xs border border-borderLight dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 dark:text-white focus:outline-none"
+                    >
+                      <option value="text">Sort by Name</option>
+                      <option value="category">Sort by Category</option>
+                    </select>
+                    <button onClick={toggleQASortOrder} className="p-1.5 text-gray-400 hover:text-textMain hover:bg-primary/10 dark:hover:bg-indigo-900/30 rounded-full transition-colors" title={`Toggle Sort Order (${qaSortOrder === 'asc' ? 'Ascending' : 'Descending'})`}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" /></svg>
+                    </button>
+                  </div>
+                </div>
                 <div className="max-h-[250px] overflow-y-auto pr-1 flex flex-col gap-2">                  
-                  {quickActions.filter(qa => !qa.deletedAt).length === 0 ? (
+                  {filteredAndSortedQAs.length === 0 ? (
                     <div className="text-center py-8 px-4">
                       <svg className="mx-auto h-12 w-12 text-gray-300 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M11 4a2 2 0 114 0 2 2 0 00-4 0zm-7 8h14a2 2 0 012 2v3a2 2 0 01-2 2H5a2 2 0 01-2-2v-3a2 2 0 012-2z" /></svg>
                       <h3 className="mt-2 text-sm font-medium text-gray-800 dark:text-gray-200">No Quick Actions</h3>
-                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Create one above to get started.</p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{qaFilter ? 'No actions match your filter.' : 'Create one above to get started.'}</p>
                     </div>
                   ) : (
-                    quickActions.filter(qa => !qa.deletedAt).map((qa) => (
+                    filteredAndSortedQAs.map((qa) => (
                       <div key={qa.id} className="group flex items-center justify-between p-3 bg-white dark:bg-gray-700/50 rounded-xl border border-borderLight dark:border-gray-700 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                         {editingQAId === qa.id ? (
                           <div className="flex flex-col gap-2 flex-1 mr-2">
