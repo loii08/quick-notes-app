@@ -87,23 +87,18 @@ const AnalyticsDataView: React.FC<AnalyticsDataViewProps> = ({ dateFilter, selec
         for (const userDoc of usersSnapshot.docs) {
           const userId = userDoc.id;
 
-          // Notes - fetch all non-deleted notes and filter by date in memory
+          // Notes - Use Firestore to filter by date for efficiency
+          const notesConstraints = [where('deletedAt', '==', null)];
+          if (dateRange) {
+            notesConstraints.push(where('timestamp', '>=', dateRange.start));
+            notesConstraints.push(where('timestamp', '<=', dateRange.end));
+          }
           const notesQuery = query(
             collection(db, `users/${userId}/notes`),
-            where('deletedAt', '==', null)
+            ...notesConstraints
           );
           const notesSnapshot = await getDocs(notesQuery);
-          
-          if (dateRange) {
-            // Filter by date range in memory
-            const notesInRange = notesSnapshot.docs.filter(doc => {
-              const timestamp = doc.data().timestamp;
-              return timestamp >= dateRange.start && timestamp <= dateRange.end;
-            });
-            totalNotes += notesInRange.length;
-          } else {
-            totalNotes += notesSnapshot.size;
-          }
+          totalNotes += notesSnapshot.size;
 
           // Categories - no date filtering
           const categoriesSnapshot = await getDocs(collection(db, `users/${userId}/categories`));
@@ -128,22 +123,18 @@ const AnalyticsDataView: React.FC<AnalyticsDataViewProps> = ({ dateFilter, selec
         let totalCategories = 0;
         let totalQuickActions = 0;
 
-        // Notes - fetch all non-deleted notes and filter by date in memory
+        // Notes - Use Firestore to filter by date for efficiency
+        const notesConstraints = [where('deletedAt', '==', null)];
+        if (dateRange) {
+          notesConstraints.push(where('timestamp', '>=', dateRange.start));
+          notesConstraints.push(where('timestamp', '<=', dateRange.end));
+        }
         const notesQuery = query(
           collection(db, `users/${userId}/notes`),
-          where('deletedAt', '==', null)
+          ...notesConstraints
         );
         const notesSnapshot = await getDocs(notesQuery);
-        
-        if (dateRange) {
-          // Filter by date range in memory
-          totalNotes = notesSnapshot.docs.filter(doc => {
-            const timestamp = doc.data().timestamp;
-            return timestamp >= dateRange.start && timestamp <= dateRange.end;
-          }).length;
-        } else {
-          totalNotes = notesSnapshot.size;
-        }
+        totalNotes = notesSnapshot.size;
 
         // Categories - no date filtering
         const categoriesSnapshot = await getDocs(collection(db, `users/${selectedUser}/categories`));
