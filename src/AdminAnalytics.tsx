@@ -14,6 +14,7 @@ type DateFilter = 'today' | 'yesterday' | 'week' | 'month' | 'all';
 interface User {
   id: string;
   email: string;
+  displayName: string;
   role: string;
 }
 interface AnalyticsDataViewProps {
@@ -86,24 +87,21 @@ const AnalyticsDataView: React.FC<AnalyticsDataViewProps> = ({ dateFilter, selec
         for (const userDoc of usersSnapshot.docs) {
           const userId = userDoc.id;
 
-          // Notes - filter by date if not 'all'
+          // Notes - fetch all non-deleted notes and filter by date in memory
+          const notesQuery = query(
+            collection(db, `users/${userId}/notes`),
+            where('deletedAt', '==', null)
+          );
+          const notesSnapshot = await getDocs(notesQuery);
+          
           if (dateRange) {
-            const notesQuery = query(
-              collection(db, `users/${userId}/notes`),
-              where('timestamp', '>=', dateRange.start),
-              where('timestamp', '<=', dateRange.end)
-            );
-            const notesSnapshot = await getDocs(notesQuery);
-            // Filter out deleted notes in memory
-            const nonDeletedNotes = notesSnapshot.docs.filter(doc => !doc.data().deletedAt);
-            totalNotes += nonDeletedNotes.length;
+            // Filter by date range in memory
+            const notesInRange = notesSnapshot.docs.filter(doc => {
+              const timestamp = doc.data().timestamp;
+              return timestamp >= dateRange.start && timestamp <= dateRange.end;
+            });
+            totalNotes += notesInRange.length;
           } else {
-            // For 'all' time, count all non-deleted notes
-            const notesQuery = query(
-              collection(db, `users/${userId}/notes`),
-              where('deletedAt', '==', null)
-            );
-            const notesSnapshot = await getDocs(notesQuery);
             totalNotes += notesSnapshot.size;
           }
 
@@ -130,22 +128,20 @@ const AnalyticsDataView: React.FC<AnalyticsDataViewProps> = ({ dateFilter, selec
         let totalCategories = 0;
         let totalQuickActions = 0;
 
-        // Notes - filter by date if not 'all'
+        // Notes - fetch all non-deleted notes and filter by date in memory
+        const notesQuery = query(
+          collection(db, `users/${userId}/notes`),
+          where('deletedAt', '==', null)
+        );
+        const notesSnapshot = await getDocs(notesQuery);
+        
         if (dateRange) {
-          const notesQuery = query(
-            collection(db, `users/${userId}/notes`),
-            where('timestamp', '>=', dateRange.start),
-            where('timestamp', '<=', dateRange.end)
-          );
-          const notesSnapshot = await getDocs(notesQuery);
-          const nonDeletedNotes = notesSnapshot.docs.filter(doc => !doc.data().deletedAt);
-          totalNotes = nonDeletedNotes.length;
+          // Filter by date range in memory
+          totalNotes = notesSnapshot.docs.filter(doc => {
+            const timestamp = doc.data().timestamp;
+            return timestamp >= dateRange.start && timestamp <= dateRange.end;
+          }).length;
         } else {
-          const notesQuery = query(
-            collection(db, `users/${userId}/notes`),
-            where('deletedAt', '==', null)
-          );
-          const notesSnapshot = await getDocs(notesQuery);
           totalNotes = notesSnapshot.size;
         }
 
@@ -218,10 +214,16 @@ const AnalyticsDataView: React.FC<AnalyticsDataViewProps> = ({ dateFilter, selec
               <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
                 {selectedUser === 'all' ? 'Total Users' : 'Selected User'}
               </p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{data.totalUsers}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-500">
-                {selectedUser === 'all' ? 'All registered' : users.find(u => u.id === selectedUser)?.email || 'User data'}
-              </p>
+              {selectedUser === 'all' ? (
+                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{data.totalUsers}</p>
+              ) : (
+                <>
+                  <p className="text-xl font-bold text-gray-900 dark:text-gray-100 truncate" title={users.find(u => u.id === selectedUser)?.displayName}>
+                    {users.find(u => u.id === selectedUser)?.displayName || 'User'}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{users.find(u => u.id === selectedUser)?.email || 'User data'}</p>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -336,6 +338,7 @@ const AdminAnalytics: React.FC = () => {
       const usersSnapshot = await getDocs(collection(db, 'users'));
       const usersData = usersSnapshot.docs.map(doc => ({
         id: doc.id,
+        displayName: doc.data().displayName || doc.data().email?.split('@')[0] || 'Unknown',
         email: doc.data().email || 'No email',
         role: doc.data().role || 'user'
       }));
@@ -367,7 +370,7 @@ const AdminAnalytics: React.FC = () => {
               <option value="all">All Users</option>
               {users.map((user) => (
                 <option key={user.id} value={user.id}>
-                  {user.email} ({user.role})
+                  {user.displayName}
                 </option>
               ))}
             </select>

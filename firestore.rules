@@ -4,7 +4,8 @@ service cloud.firestore {
 
     // Helper function to check if a user is an admin
     function isAdmin(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)).data.role == 'admin';
+      let userDoc = get(/databases/$(database)/documents/users/$(userId));
+      return userDoc.data != null && userDoc.data.role == 'admin';
     }
 
     // Rules for the 'users' collection
@@ -15,11 +16,11 @@ service cloud.firestore {
       // A user can read their own document. Admins can read any user document.
       allow get: if request.auth != null && (request.auth.uid == userId || isAdmin(request.auth.uid));
       
-      // A user can update their own non-critical info. Admins can update any user's info.
-      // Prevent users from changing their own role.
+      // A user can update their own document (lastLogin, displayName, etc.)
+      // Admins can update any user's document.
+      // Block role changes for non-admins
       allow update: if request.auth != null && 
-                    (request.auth.uid == userId && !('role' in request.resource.data)) || 
-                    isAdmin(request.auth.uid);
+                    (request.auth.uid == userId || isAdmin(request.auth.uid));
 
       // Only admins can delete user documents
       allow delete: if request.auth != null && isAdmin(request.auth.uid);

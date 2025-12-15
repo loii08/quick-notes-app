@@ -11,6 +11,7 @@ import LandingPage from './components/LandingPage';
 import LoginModal from './components/LoginModal';
 import AppLoader from './components/AppLoader';
 import AdminAnalytics from './AdminAnalytics';
+import UserAnalytics from './UserAnalytics';
 import AdminSettings from './AdminSettings';
 import AdminRoute from './AdminRoute';
 import { useAuthStatus } from './useAuthStatus';
@@ -362,17 +363,28 @@ const App: React.FC = () => {
     const userDocRef = doc(db, 'users', user.uid);
 
     const updateUserProfile = async () => {
-      const docSnap = await getDoc(userDocRef);
-      if (docSnap.exists()) {
-        // User exists, just update last login time
-        await setDoc(userDocRef, {
-          lastLogin: new Date(user.metadata.lastSignInTime || Date.now())
-        }, { merge: true });
-      } else {
-        // New user, create profile
-        await setDoc(userDocRef, {
-          uid: user.uid, displayName: user.displayName || user.email?.split('@')[0], email: user.email, role: 'user', status: 'active', createdAt: serverTimestamp(), lastLogin: new Date(user.metadata.lastSignInTime || Date.now())
-        });
+      try {
+        const docSnap = await getDoc(userDocRef);
+        if (docSnap.exists()) {
+          // User exists, just update last login time
+          await setDoc(userDocRef, {
+            lastLogin: new Date(user.metadata.lastSignInTime || Date.now())
+          }, { merge: true });
+        } else {
+          // New user, create profile
+          await setDoc(userDocRef, {
+            uid: user.uid, 
+            displayName: user.displayName || user.email?.split('@')[0], 
+            email: user.email, 
+            role: 'user', 
+            status: 'active', 
+            createdAt: serverTimestamp(), 
+            lastLogin: new Date(user.metadata.lastSignInTime || Date.now())
+          });
+        }
+      } catch (error) {
+        console.error('Error updating user profile:', error);
+        // Silently fail - user can still use the app
       }
     };
 
@@ -1675,11 +1687,20 @@ const App: React.FC = () => {
                       </button>
                     </>
                   )}
-                  {user && userRole === 'admin' && (
-                    <Link to="/admin" onClick={() => setIsMenuOpen(false)} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                      Admin Dashboard
-                    </Link>
+                  {user && (
+                    <>
+                      {userRole === 'admin' ? (
+                        <Link to="/admin" onClick={() => setIsMenuOpen(false)} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                          Admin Dashboard
+                        </Link>
+                      ) : (
+                        <Link to="/analytics" onClick={() => setIsMenuOpen(false)} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
+                          <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                          My Analytics
+                        </Link>
+                      )}
+                    </>
                   )}
                   <div className="border-t border-borderLight dark:border-gray-700 my-1"></div>
                   {user ? (
@@ -2379,6 +2400,19 @@ const App: React.FC = () => {
   );
 };
 
+// Analytics page that redirects admins to admin dashboard
+const AnalyticsPage: React.FC = () => {
+  const { userRole } = useAuthStatus();
+  
+  // If admin, redirect to admin dashboard
+  if (userRole === 'admin') {
+    return <Navigate to="/admin" replace />;
+  }
+  
+  // Regular users see the user analytics
+  return <UserAnalytics />;
+};
+
 const AppRoutes: React.FC = () => {
   const { user, userRole, authLoading } = useAuthStatus();
  
@@ -2389,7 +2423,8 @@ const AppRoutes: React.FC = () => {
   return (
     <>
       <Routes>
-        <Route path="/*" element={<App />} />
+        <Route path="/" element={<App />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/not-authorized" element={<NotAuthorized />} />
         <Route path="/admin" element={<AdminRoute user={user} userRole={userRole}><AdminDashboard /></AdminRoute>}>
           <Route index element={<Navigate to="analytics" replace />} />
