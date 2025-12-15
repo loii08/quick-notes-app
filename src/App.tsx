@@ -254,6 +254,14 @@ const App: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(false);
   const [authLoadingSource, setAuthLoadingSource] = useState<'google' | 'email' | null>(null);
   
+  // Global settings state
+  const [globalSettings, setGlobalSettings] = useState({
+    maintenanceMode: false,
+    allowRegistration: true,
+    defaultTheme: 'default' as keyof typeof THEMES,
+  });
+  const [globalSettingsLoaded, setGlobalSettingsLoaded] = useState(false);
+  
   const [confirmDeleteNoteId, setConfirmDeleteNoteId] = useState<string | null>(null);
   const [confirmDeleteCategoryId, setConfirmDeleteCategoryId] = useState<string | null>(null);
   const [confirmDeleteQAId, setConfirmDeleteQAId] = useState<string | null>(null);
@@ -701,6 +709,13 @@ const App: React.FC = () => {
         // set persistence according to user's choice
         await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
         if (isSignUp) {
+            // Check if registration is allowed
+            if (!globalSettings.allowRegistration) {
+                showToast('New user registrations are currently not available. Please contact your system administrator.', 'error');
+                setAuthLoading(false);
+                setAuthLoadingSource(null);
+                return;
+            }
             const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
             if (authName) {
                 await updateProfile(userCredential.user, {
@@ -748,6 +763,52 @@ const App: React.FC = () => {
         setAuthLoadingSource(null);
     }
   };
+
+  // Load global settings from Firestore (only when authenticated)
+  useEffect(() => {
+    // Only load settings if user is authenticated
+    if (!user || !db) {
+      setGlobalSettingsLoaded(true); // Mark as loaded even if not authenticated
+      return;
+    }
+
+    const loadGlobalSettings = async () => {
+      try {
+        const settingsDoc = await getDoc(doc(db, 'settings', 'global'));
+        if (settingsDoc.exists()) {
+          const data = settingsDoc.data();
+          setGlobalSettings({
+            maintenanceMode: data.maintenanceMode || false,
+            allowRegistration: data.allowRegistration !== false,
+            defaultTheme: (data.defaultTheme as keyof typeof THEMES) || 'default',
+          });
+        }
+      } catch (error) {
+        console.error('Error loading global settings:', error);
+      } finally {
+        setGlobalSettingsLoaded(true);
+      }
+    };
+
+    // Initial load
+    loadGlobalSettings();
+    
+    // Listen for changes
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        setGlobalSettings({
+          maintenanceMode: data.maintenanceMode || false,
+          allowRegistration: data.allowRegistration !== false,
+          defaultTheme: (data.defaultTheme as keyof typeof THEMES) || 'default',
+        });
+      }
+    }, (error) => {
+      console.error('Error listening to global settings:', error);
+    });
+    
+    return unsubscribe;
+  }, [user, db]);
 
   // keep localStorage in sync when rememberMe changes (remove credentials when turned off)
   useEffect(() => {
@@ -1835,6 +1896,7 @@ const App: React.FC = () => {
           onForgotPassword={handleForgotPassword}
           authLoading={authLoading}
           authLoadingSource={authLoadingSource}
+          allowRegistration={globalSettings.allowRegistration}
         />
       )}
 
@@ -2321,21 +2383,105 @@ const AppRoutes: React.FC = () => {
   const { user, userRole, authLoading } = useAuthStatus();
  
   if (authLoading) {
-    return <AppLoader />; // Or any full-screen loader
+    return <AppLoader />;
   }
 
   return (
-    <Routes>
-      <Route path="/*" element={<App />} />
-      <Route path="/not-authorized" element={<NotAuthorized />} />
-      <Route path="/admin" element={<AdminRoute user={user} userRole={userRole}><AdminDashboard /></AdminRoute>}>
-        <Route index element={<Navigate to="analytics" replace />} />
-        <Route path="users" element={<UserList />} />
-        <Route path="analytics" element={<AdminAnalytics />} />
-        <Route path="settings" element={<AdminSettings />} />
-      </Route>
-    </Routes>
-  )
+    <>
+      <Routes>
+        <Route path="/*" element={<App />} />
+        <Route path="/not-authorized" element={<NotAuthorized />} />
+        <Route path="/admin" element={<AdminRoute user={user} userRole={userRole}><AdminDashboard /></AdminRoute>}>
+          <Route index element={<Navigate to="analytics" replace />} />
+          <Route path="users" element={<UserList />} />
+          <Route path="analytics" element={<AdminAnalytics />} />
+          <Route path="settings" element={<AdminSettings />} />
+        </Route>
+      </Routes>
+
+      {/* Maintenance Mode Overlay */}
+      {user && <MaintenanceOverlay />}
+    </>
+  );
+}
+
+// Separate component to handle maintenance mode overlay
+const MaintenanceOverlay: React.FC = () => {
+  const { userRole } = useAuthStatus();
+  const [globalSettings, setGlobalSettings] = useState({
+    maintenanceMode: false,
+    allowRegistration: true,
+    defaultTheme: 'default' as keyof typeof THEMES,
+  });
+
+  // Load global settings
+  useEffect(() => {
+    if (!db) return;
+
+    const loadGlobalSettings = async () => {
+      try {
+        const settingsDoc = await getDoc(doc(db, 'settings', 'global'));
+        if (settingsDoc.exists()) {
+          const data = settingsDoc.data();
+          setGlobalSettings({
+            maintenanceMode: data.maintenanceMode || false,
+            allowRegistration: data.allowRegistration !== false,
+            defaultTheme: (data.defaultTheme as keyof typeof THEMES) || 'default',
+          });
+        }
+      } catch (error) {
+        console.error('Error loading global settings:', error);
+      }
+    };
+
+    // Initial load
+    loadGlobalSettings();
+    
+    // Listen for changes
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        setGlobalSettings({
+          maintenanceMode: data.maintenanceMode || false,
+          allowRegistration: data.allowRegistration !== false,
+          defaultTheme: (data.defaultTheme as keyof typeof THEMES) || 'default',
+        });
+      }
+    }, (error) => {
+      console.warn('Error listening to global settings:', error);
+    });
+    
+    return unsubscribe;
+  }, [db]);
+
+  if (!globalSettings.maintenanceMode || userRole === 'admin') {
+    return null;
+  }
+
+  return (
+    <>
+      {/* Backdrop that prevents interaction */}
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-[9998] pointer-events-auto" />
+      
+      {/* Modal */}
+      <div className="fixed inset-0 flex items-center justify-center z-[9999] pointer-events-none">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-8 text-center max-w-md w-full mx-4 pointer-events-auto">
+          <div className="mb-6">
+            <svg className="mx-auto h-16 w-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Under Maintenance</h1>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            We're currently performing maintenance on the application. Please check back later.
+          </p>
+          <div className="text-sm text-gray-500 dark:text-gray-400">
+            The application will be available again shortly.
+          </div>
+        </div>
+      </div>
+    </>
+  );
 }
 
 export default AppRoutes;

@@ -23,6 +23,7 @@ interface LoginModalProps {
   onForgotPassword: () => void;
   authLoading: boolean;
   authLoadingSource: 'google' | 'email' | null;
+  allowRegistration?: boolean;
 }
 
 const LoginModal: React.FC<LoginModalProps> = ({
@@ -42,7 +43,8 @@ const LoginModal: React.FC<LoginModalProps> = ({
   setAuthPassword,
   onForgotPassword,
   authLoading,
-  authLoadingSource
+  authLoadingSource,
+  allowRegistration = true
 }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [emailError, setEmailError] = useState('');
@@ -154,10 +156,20 @@ const LoginModal: React.FC<LoginModalProps> = ({
         </button>
 
         <p className="text-center text-sm text-gray-600 dark:text-gray-400">
-          {isSignUp ? "Already have an account?" : "Don't have an account?"}
-          <button onClick={() => setIsSignUp(!isSignUp)} className="font-semibold text-primary hover:underline ml-1">
-            {isSignUp ? "Sign In" : "Sign Up"}
-          </button>
+          {!allowRegistration ? (
+            // Registration disabled - always show the message
+            <span className="block mt-2 text-xs text-red-500 dark:text-red-400 font-semibold">
+              New registrations are currently not available. Please contact system administrator.
+            </span>
+          ) : (
+            // Registration enabled - show toggle link
+            <>
+              {isSignUp ? "Already have an account?" : "Don't have an account?"}
+              <button onClick={() => setIsSignUp(!isSignUp)} className="font-semibold text-primary hover:underline ml-1">
+                {isSignUp ? "Sign In" : "Sign Up"}
+              </button>
+            </>
+          )}
         </p>
       </div>
     </Modal>
