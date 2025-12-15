@@ -33,7 +33,10 @@ const AdminDashboard: React.FC = () => {
       </div>
 
       <div className="flex flex-col">
-        <header className="flex h-14 items-center justify-between border-b bg-white dark:bg-gray-950 px-4 lg:h-[60px] lg:px-6">
+        <header
+          className="flex h-14 items-center justify-between border-b bg-white dark:bg-gray-950 px-4 lg:h-[60px] lg:px-6 sticky top-0 z-30"
+          style={{ paddingTop: `env(safe-area-inset-top)` }}
+        >
           <div className="w-full flex-1">
             <h1 className="font-semibold text-lg md:text-xl text-gray-800 dark:text-gray-200">
               Admin Dashboard
@@ -47,7 +50,10 @@ const AdminDashboard: React.FC = () => {
             <span className="sr-only">Open sidebar</span>
           </button>
         </header>
-        <main className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-auto">
+        <main
+          className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6 overflow-auto"
+          style={{ paddingBottom: `env(safe-area-inset-bottom)` }}
+        >
           <Outlet />
         </main>
       </div>
