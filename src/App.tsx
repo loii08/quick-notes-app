@@ -1579,7 +1579,12 @@ const App: React.FC = () => {
         <OnboardingModal isOpen={showOnboarding} onClose={() => setShowOnboarding(false)} />
       )}
       
-      <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${(!isOnline || showBackOnlineBanner) ? 'mt-9' : ''} ${isScrolled && user ? 'bg-primary dark:bg-gray-900/95 backdrop-blur-md shadow-lg py-3' : 'bg-primary dark:bg-gray-900 py-6'}`}>
+      <nav
+        className={`fixed top-0 w-full z-50 transition-all duration-300 ${(!isOnline || showBackOnlineBanner) ? 'mt-9' : ''} ${isScrolled && user ? 'bg-primary dark:bg-gray-900/95 backdrop-blur-md shadow-lg py-3' : 'bg-primary dark:bg-gray-900 py-6'}`}
+        style={{
+          paddingTop: `calc(${(isScrolled && user) ? '0.75rem' : '1.5rem'} + env(safe-area-inset-top))`
+        }}
+      >
         <div className="container mx-auto px-4 flex justify-between items-center">
           <div className="flex items-center gap-3 min-w-0">
             <img src="/icon.ico" alt="App Icon" className={`rounded-full transition-all duration-300 ${isScrolled && user ? 'w-8 h-8' : 'w-10 h-10'}`} />
@@ -1728,7 +1733,12 @@ const App: React.FC = () => {
       </nav>
 
       {user ? (
-        <main className={`relative container mx-auto px-4 pt-32 max-w-3xl flex-1 transition-all duration-300 ${(!isOnline || showBackOnlineBanner) ? 'mt-9' : ''}`}>
+        <main
+          className={`relative container mx-auto px-4 pt-32 max-w-3xl flex-1 transition-all duration-300 ${(!isOnline || showBackOnlineBanner) ? 'mt-9' : ''}`}
+          style={{
+            paddingTop: `calc(8rem + env(safe-area-inset-top))`
+          }}
+        >
           {isInitialDataLoading ? (
             <SkeletonLoader />
           ) : (
@@ -1884,7 +1894,12 @@ const App: React.FC = () => {
           )}
         </main>
       ) : (
-        <main className="flex-1 pt-32 container mx-auto px-4 max-w-3xl">
+        <main
+          className="flex-1 pt-32 container mx-auto px-4 max-w-3xl"
+          style={{
+            paddingTop: `calc(8rem + env(safe-area-inset-top))`
+          }}
+        >
           <LandingPage onLoginClick={() => setShowLoginModal(true)} />
         </main>
       )}
