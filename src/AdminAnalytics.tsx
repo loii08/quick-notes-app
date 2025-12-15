@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '@/firebase';
+import { db, auth } from '@/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 
 interface AnalyticsData {
@@ -16,19 +16,11 @@ interface User {
   email: string;
   role: string;
 }
-
-const AdminAnalytics: React.FC = () => {
-  const [data, setData] = useState<AnalyticsData>({
-    totalUsers: 0,
-    totalNotes: 0,
-    totalCategories: 0,
-    totalQuickActions: 0,
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [dateFilter, setDateFilter] = useState<DateFilter>('today');
-  const [selectedUser, setSelectedUser] = useState<string>('all');
-  const [users, setUsers] = useState<User[]>([]);
+interface AnalyticsDataViewProps {
+  dateFilter: DateFilter;
+  selectedUser: string;
+  users: User[];
+}
 
   // Helper function to get date range for filtering
   const getDateRange = (filter: DateFilter) => {
@@ -58,31 +50,28 @@ const AdminAnalytics: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
+const AnalyticsDataView: React.FC<AnalyticsDataViewProps> = ({ dateFilter, selectedUser, users }) => {
+  const [data, setData] = useState<AnalyticsData>({
+    totalUsers: 0,
+    totalNotes: 0,
+    totalCategories: 0,
+    totalQuickActions: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAnalytics();
   }, [dateFilter, selectedUser]);
 
-  const fetchUsers = async () => {
-    try {
-      const usersSnapshot = await getDocs(collection(db, 'users'));
-      const usersData = usersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        email: doc.data().email || 'No email',
-        role: doc.data().role || 'user'
-      }));
-      setUsers(usersData);
-    } catch (err) {
-      console.error('Error fetching users:', err);
-    }
-  };
-
   const fetchAnalytics = async () => {
     setLoading(true);
     try {
+      if (!auth.currentUser) {
+        setError("Authentication required.");
+        setLoading(false);
+        return;
+      }
       const dateRange = getDateRange(dateFilter);
 
       if (selectedUser === 'all') {
@@ -188,7 +177,15 @@ const AdminAnalytics: React.FC = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-gray-100"></div>
+        <div className="flex justify-center items-center space-x-2">
+          {[0, 1, 2].map((index) => (
+            <div
+              key={index}
+              className="w-3 h-3 bg-primary rounded-full animate-juggle"
+              style={{ animationDelay: `${index * 0.15}s` }}
+            />
+          ))}
+        </div>
       </div>
     );
   }
@@ -208,56 +205,7 @@ const AdminAnalytics: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Analytics Dashboard</h2>
-        
-        <div className="flex items-center gap-4">
-          {/* User Filter */}
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">User:</label>
-            <select
-              value={selectedUser}
-              onChange={(e) => setSelectedUser(e.target.value)}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-            >
-              <option value="all">All Users</option>
-              {users.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.email} ({user.role})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Date Filter */}
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Date:</label>
-            <select
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value as DateFilter)}
-              className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
-            >
-              <option value="today">Today</option>
-              <option value="yesterday">Yesterday</option>
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
-              <option value="all">All Time</option>
-            </select>
-          </div>
-
-          <button
-            onClick={fetchAnalytics}
-            className="px-4 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Refresh
-          </button>
-        </div>
-      </div>
-
+    <div className="space-y-6 animate-fade-in">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
           <div className="flex items-center">
@@ -335,7 +283,7 @@ const AdminAnalytics: React.FC = () => {
         <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
           {selectedUser === 'all' ? 'Quick Stats' : 'User Overview'}
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {selectedUser === 'all' ? (
             <>
               <div className="text-center">
@@ -369,6 +317,93 @@ const AdminAnalytics: React.FC = () => {
           )}
         </div>
       </div>
+    </div>
+  );
+};
+
+const AdminAnalytics: React.FC = () => {
+  const [dateFilter, setDateFilter] = useState<DateFilter>('today');
+  const [selectedUser, setSelectedUser] = useState<string>('all');
+  const [users, setUsers] = useState<User[]>([]);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const usersSnapshot = await getDocs(collection(db, 'users'));
+      const usersData = usersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        email: doc.data().email || 'No email',
+        role: doc.data().role || 'user'
+      }));
+      setUsers(usersData);
+    } catch (err) {
+      console.error('Error fetching users:', err);
+    }
+  };
+
+  const handleRefresh = () => {
+    setRefreshTrigger(prev => prev + 1);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Analytics Dashboard</h2>
+        
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-wrap">
+          {/* User Filter */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <label htmlFor="user-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">User:</label>
+            <select
+              id="user-filter"
+              value={selectedUser}
+              onChange={(e) => setSelectedUser(e.target.value)}
+              className="flex-grow px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
+            >
+              <option value="all">All Users</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.email} ({user.role})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date Filter */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <label htmlFor="date-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Date:</label>
+            <select
+              id="date-filter"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value as DateFilter)}
+              className="flex-grow px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
+            >
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="all">All Time</option>
+            </select>
+          </div>
+          <button
+            onClick={handleRefresh}
+            className="p-2 sm:px-4 sm:py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 flex items-center justify-center sm:justify-start gap-2"
+            title="Refresh"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      <AnalyticsDataView key={refreshTrigger} dateFilter={dateFilter} selectedUser={selectedUser} users={users} />
     </div>
   );
 };

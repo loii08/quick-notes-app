@@ -20,11 +20,9 @@ const AdminSettings: React.FC = () => {
     // Only load settings if user is authenticated
     if (!user || !db) return;
 
-    // Initial load
-    loadSettings();
-    
     // Listen for real-time changes
     const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
+      setLoading(true); // Set loading while processing snapshot
       if (doc.exists()) {
         const data = doc.data();
         setGlobalSettings({
@@ -33,32 +31,15 @@ const AdminSettings: React.FC = () => {
           defaultTheme: data.defaultTheme || 'default',
         });
       }
+      setLoading(false); // Unset loading after processing
     }, (error) => {
       console.error('Error listening to settings:', error);
       showToast('Failed to sync settings', 'error');
+      setLoading(false);
     });
     
     return unsubscribe;
   }, [user, db]);
-
-  const loadSettings = async () => {
-    try {
-      const settingsDoc = await getDoc(doc(db, 'settings', 'global'));
-      if (settingsDoc.exists()) {
-        const data = settingsDoc.data();
-        setGlobalSettings({
-          maintenanceMode: data.maintenanceMode || false,
-          allowRegistration: data.allowRegistration !== false,
-          defaultTheme: data.defaultTheme || 'default',
-        });
-      }
-    } catch (error) {
-      console.error('Error loading settings:', error);
-      showToast('Failed to load settings', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const generateId = () => Math.random().toString(36).substr(2, 9);
 

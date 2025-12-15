@@ -1,19 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '@/firebase';
 import {
-  collection,
-  query,
-  orderBy,
-  doc,
-  updateDoc,
-  deleteDoc,
-  limit,
-  startAfter,
-  getDocs,
+  collection, query, orderBy, doc, updateDoc, deleteDoc,
+  limit, startAfter, getDocs,
   QueryDocumentSnapshot,
   DocumentData,
   Timestamp,
-  where,
 } from 'firebase/firestore';
 import ConfirmationModal from './components/ConfirmationModal';
 import ToastContainer from './components/ToastContainer';
@@ -29,10 +21,10 @@ export interface AppUser {
   status: 'active' | 'inactive';
   createdAt: Timestamp | null;
   lastLogin: Timestamp | null;
-  lastUpdate?: Timestamp | null;
-  notesCount?: number;
-  categoryCount?: number;
-  quickActionCount?: number;
+  lastUpdate: Timestamp | null;
+  notesCount: number;
+  categoryCount: number;
+  quickActionCount: number;
 }
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -76,32 +68,11 @@ const UserList: React.FC = () => {
       const documentSnapshots = await getDocs(q);
       const usersData = documentSnapshots.docs.map(doc => ({
         uid: doc.id,
-        ...doc.data(),
+        ...doc.data(), // Assuming notesCount, categoryCount, quickActionCount are now fields on the user document
+        notesCount: doc.data().notesCount || 0,
+        categoryCount: doc.data().categoryCount || 0,
+        quickActionCount: doc.data().quickActionCount || 0,
       } as AppUser));
-
-      // Calculate counts for each user
-      for (const user of usersData) {
-        try {
-          // Count notes (excluding deleted ones)
-          const notesQuery = query(collection(db, `users/${user.uid}/notes`), where('deletedAt', '==', null));
-          const notesSnapshot = await getDocs(notesQuery);
-          user.notesCount = notesSnapshot.size;
-
-          // Count categories
-          const categoriesSnapshot = await getDocs(collection(db, `users/${user.uid}/categories`));
-          user.categoryCount = categoriesSnapshot.size;
-
-          // Count quick actions
-          const quickActionsSnapshot = await getDocs(collection(db, `users/${user.uid}/quickActions`));
-          user.quickActionCount = quickActionsSnapshot.size;
-        } catch (countError) {
-          console.warn(`Error counting data for user ${user.uid}:`, countError);
-          // Set defaults if counting fails
-          user.notesCount = 0;
-          user.categoryCount = 0;
-          user.quickActionCount = 0;
-        }
-      }
 
       setUsers(usersData);
       setLastVisible(documentSnapshots.docs[documentSnapshots.docs.length - 1]);
@@ -247,15 +218,15 @@ const UserList: React.FC = () => {
                     {isExpanded && (
                       <tr className="bg-gray-50 dark:bg-gray-700/50">
                         <td colSpan={3} className="px-6 py-4">
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
                             <div className="bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-300 p-2 rounded-md text-center text-sm font-semibold">
-                              Notes: {user.notesCount ?? 0}
+                              Notes: {user.notesCount}
                             </div>
                             <div className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-300 p-2 rounded-md text-center text-sm font-semibold">
-                              Categories: {user.categoryCount ?? 0}
+                              Categories: {user.categoryCount}
                             </div>
                             <div className="bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-300 p-2 rounded-md text-center text-sm font-semibold">
-                              Quick Actions: {user.quickActionCount ?? 0}
+                              Quick Actions: {user.quickActionCount}
                             </div>
                           </div>
 
