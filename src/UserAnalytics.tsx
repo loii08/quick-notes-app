@@ -70,26 +70,21 @@ const AnalyticsDataView: React.FC<AnalyticsDataViewProps> = ({ dateFilter, userI
     try {
       const dateRange = getDateRange(dateFilter);
 
-      let totalNotes = 0;
       let totalCategories = 0;
       let totalQuickActions = 0;
 
-      // Notes - fetch all non-deleted notes and filter in memory
+      // Notes - Use Firestore to filter by date for efficiency
+      const notesConstraints = [where('deletedAt', '==', null)];
+      if (dateRange) {
+        notesConstraints.push(where('timestamp', '>=', dateRange.start));
+        notesConstraints.push(where('timestamp', '<=', dateRange.end));
+      }
       const notesQuery = query(
         collection(db, `users/${userId}/notes`),
-        where('deletedAt', '==', null)
+        ...notesConstraints
       );
       const notesSnapshot = await getDocs(notesQuery);
-      
-      if (dateRange) {
-        // Filter by date range in memory
-        totalNotes = notesSnapshot.docs.filter(doc => {
-          const timestamp = doc.data().timestamp;
-          return timestamp >= dateRange.start && timestamp <= dateRange.end;
-        }).length;
-      } else {
-        totalNotes = notesSnapshot.size;
-      }
+      const totalNotes = notesSnapshot.size;
 
       // Categories - no date filtering
       const categoriesSnapshot = await getDocs(collection(db, `users/${userId}/categories`));
@@ -227,7 +222,10 @@ const UserAnalytics: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       {/* Navbar */}
-      <nav className="fixed top-0 w-full z-50 bg-primary dark:bg-gray-900 py-6 shadow-lg">
+      <nav
+        className="fixed top-0 w-full z-50 bg-primary dark:bg-gray-900 py-6 shadow-lg"
+        style={{ paddingTop: `calc(1.5rem + env(safe-area-inset-top))` }}
+      >
         <div className="container mx-auto px-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <img src="/icon.ico" alt="App Icon" className="w-10 h-10 rounded-full" />
@@ -246,7 +244,10 @@ const UserAnalytics: React.FC = () => {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-grow container mx-auto px-4 py-6 mt-20">
+      <main
+        className="flex-grow container mx-auto px-4 py-6 mt-20"
+        style={{ marginTop: `calc(5rem + env(safe-area-inset-top))` }}
+      >
         <div className="space-y-6 max-w-4xl mx-auto">
           {/* User Profile Card */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 animate-fade-in">
@@ -319,7 +320,10 @@ const UserAnalytics: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="bg-surface dark:bg-gray-800 text-gray-500 dark:text-gray-400 py-6 text-center text-xs border-t border-borderLight dark:border-gray-700 mt-8">
+      <footer
+        className="bg-surface dark:bg-gray-800 text-gray-500 dark:text-gray-400 py-6 text-center text-xs border-t border-borderLight dark:border-gray-700 mt-8"
+        style={{ paddingBottom: `calc(1.5rem + env(safe-area-inset-bottom))` }}
+      >
         <div className="flex justify-center gap-6 mb-3">
           <a href="https://www.linkedin.com/in/kenneth-irvin-butad-479b4b26b/" target="_blank" rel="noopener noreferrer" title="LinkedIn" className="hover:text-textMain dark:hover:text-indigo-400 transition-colors">
             <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
