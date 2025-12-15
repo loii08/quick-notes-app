@@ -43,6 +43,7 @@ import {
   setDoc, 
   deleteDoc,
   getDoc,
+  updateDoc,
   serverTimestamp, 
   writeBatch
 } from 'firebase/firestore';
@@ -853,6 +854,18 @@ const App: React.FC = () => {
     }
   };
 
+  const updateUserLastUpdate = async () => {
+    if (user && db && isOnline) {
+      try {
+        await updateDoc(doc(db, 'users', user.uid), {
+          lastUpdate: serverTimestamp()
+        });
+      } catch (e) {
+        console.error("Failed to update user lastUpdate:", e);
+      }
+    }
+  };
+
   const handleAddNote = async (content: string) => {
     if (!content.trim()) {
       showToast('Please enter some text', 'error');
@@ -877,6 +890,7 @@ const App: React.FC = () => {
         setSyncStatus('syncing');
         try {
           await setDoc(doc(db, `users/${user.uid}/notes`, newNote.id), newNote);
+          await updateUserLastUpdate();
           setSyncStatus('idle');
           setLastSyncTime(Date.now());
         } catch (e) {
@@ -904,6 +918,7 @@ const App: React.FC = () => {
         if (!silent) setSyncStatus('syncing');
         try {
           await setDoc(doc(db, `users/${user.uid}/notes`, id), { content, categoryId, timestamp: updatedTimestamp }, { merge: true });
+          await updateUserLastUpdate();
           setSyncStatus('idle');
           if (!silent) setLastSyncTime(Date.now());
         } catch (e) {
@@ -922,6 +937,7 @@ const App: React.FC = () => {
       try {
         setSyncStatus('syncing');
         await deleteDoc(doc(db, `users/${user.uid}/notes`, noteIdToDelete));
+        await updateUserLastUpdate();
         setSyncStatus('idle');
         setLastSyncTime(Date.now());
         showToast('Note deleted');
