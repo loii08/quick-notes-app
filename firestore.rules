@@ -30,7 +30,9 @@ service cloud.firestore {
 
     // Rules for user-specific subcollections (notes, categories, etc.)
     match /users/{userId}/{collection}/{docId} {
-      allow read, write, delete: if request.auth != null && request.auth.uid == userId;
+      // Users can access their own data, admins can access all data
+      allow read, write, delete: if request.auth != null && 
+                                  (request.auth.uid == userId || isAdmin(request.auth.uid));
     }
   }
 }

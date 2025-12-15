@@ -13,6 +13,7 @@ import {
   QueryDocumentSnapshot,
   DocumentData,
   Timestamp,
+  where,
 } from 'firebase/firestore';
 import ConfirmationModal from './components/ConfirmationModal';
 import ToastContainer from './components/ToastContainer';
@@ -78,6 +79,30 @@ const UserList: React.FC = () => {
         ...doc.data(),
       } as AppUser));
 
+      // Calculate counts for each user
+      for (const user of usersData) {
+        try {
+          // Count notes (excluding deleted ones)
+          const notesQuery = query(collection(db, `users/${user.uid}/notes`), where('deletedAt', '==', null));
+          const notesSnapshot = await getDocs(notesQuery);
+          user.notesCount = notesSnapshot.size;
+
+          // Count categories
+          const categoriesSnapshot = await getDocs(collection(db, `users/${user.uid}/categories`));
+          user.categoryCount = categoriesSnapshot.size;
+
+          // Count quick actions
+          const quickActionsSnapshot = await getDocs(collection(db, `users/${user.uid}/quickActions`));
+          user.quickActionCount = quickActionsSnapshot.size;
+        } catch (countError) {
+          console.warn(`Error counting data for user ${user.uid}:`, countError);
+          // Set defaults if counting fails
+          user.notesCount = 0;
+          user.categoryCount = 0;
+          user.quickActionCount = 0;
+        }
+      }
+
       setUsers(usersData);
       setLastVisible(documentSnapshots.docs[documentSnapshots.docs.length - 1]);
       setIsLastPage(documentSnapshots.docs.length < USERS_PER_PAGE);
@@ -142,10 +167,11 @@ const UserList: React.FC = () => {
     });
   };
 
-  const filteredUsers = users.filter(user =>
-    user.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = users.filter(user => {
+    const displayName = user.displayName || user.email?.split('@')[0] || '';
+    return displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           user.email.toLowerCase().includes(searchTerm.toLowerCase());
+  });
 
   return (
     <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-4 sm:p-6 relative">
@@ -197,7 +223,7 @@ const UserList: React.FC = () => {
                   <React.Fragment key={user.uid}>
                     <tr className="cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" onClick={() => toggleRow(user.uid)}>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">{user.displayName}</div>
+                        <div className="text-sm font-medium text-gray-900 dark:text-white">{user.displayName || user.email?.split('@')[0] || 'Unknown User'}</div>
                         <div className="text-sm text-gray-500 dark:text-gray-400">{user.email}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -284,7 +310,7 @@ const UserList: React.FC = () => {
               <div key={user.uid} className="bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
                 <div className="flex justify-between items-start">
                   <div>
-                    <div className="font-bold text-gray-900 dark:text-white">{user.displayName}</div>
+                    <div className="font-bold text-gray-900 dark:text-white">{user.displayName || user.email?.split('@')[0] || 'Unknown User'}</div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">{user.email}</div>
                   </div>
                   <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${user.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'}`}>

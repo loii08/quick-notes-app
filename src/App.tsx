@@ -10,6 +10,8 @@ import SkeletonLoader from './components/SkeletonLoader';
 import LandingPage from './components/LandingPage';
 import LoginModal from './components/LoginModal';
 import AppLoader from './components/AppLoader';
+import AdminAnalytics from './AdminAnalytics';
+import AdminSettings from './AdminSettings';
 import AdminRoute from './AdminRoute';
 import { useAuthStatus } from './useAuthStatus';
 import AdminDashboard from './AdminDashboard';
@@ -2311,9 +2313,10 @@ const AppRoutes: React.FC = () => {
       <Route path="/*" element={<App />} />
       <Route path="/not-authorized" element={<NotAuthorized />} />
       <Route path="/admin" element={<AdminRoute user={user} userRole={userRole}><AdminDashboard /></AdminRoute>}>
-        <Route index element={<Navigate to="users" replace />} />
-        {/* The UserList component will be created in the next step */}
+        <Route index element={<Navigate to="analytics" replace />} />
         <Route path="users" element={<UserList />} />
+        <Route path="analytics" element={<AdminAnalytics />} />
+        <Route path="settings" element={<AdminSettings />} />
       </Route>
     </Routes>
   )
