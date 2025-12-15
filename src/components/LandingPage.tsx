@@ -14,13 +14,8 @@ const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick }) => {
         {/* App Preview */}
         <AppPreview />
 
-        {/* App Title */}
-        <h2 className="mt-8 text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
-          Quick Notes
-        </h2>
-
         {/* Hero Text */}
-        <h1 className="mt-4 text-3xl md:text-4xl font-extrabold text-gray-900 dark:text-white">
+        <h1 className="mt-12 text-3xl md:text-4xl font-extrabold text-gray-900 dark:text-white">
           Capture Ideas Instantly
         </h1>
         <p className="mt-4 text-lg md:text-xl text-gray-700 dark:text-gray-300">
