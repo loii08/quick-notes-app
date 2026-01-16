@@ -405,29 +405,12 @@ const App: React.FC = () => {
 
     const notesRef = collection(db, `users/${user.uid}/notes`);
     const notesUnsub = onSnapshot(notesRef, (snapshot) => {
-      const cloudNotes = snapshot.docs.map(doc => ({ ...doc.data(), synced: true }) as Note);
-
-      setNotes(prevLocalNotes => {
-        const cloudNotesMap = new Map<string, Note>();
-        cloudNotes.forEach(note => cloudNotesMap.set(note.id, note));
-
-        // Add any unsynced local notes to the map, overwriting any
-        // existing cloud version. These are considered newer.
-        prevLocalNotes.forEach(localNote => {
-          if (localNote.synced === false) {
-            cloudNotesMap.set(localNote.id, localNote);
-          }
-        });
-
-        const finalNotes = Array.from(cloudNotesMap.values()).sort((a, b) => b.timestamp - a.timestamp);
-
-        try {
-          // Persist the merged list of notes
-          localStorage.setItem('qn_notes', JSON.stringify(finalNotes));
-        } catch (e) { console.error('Failed to save merged notes to localStorage', e); }
-
-        return finalNotes;
-      });
+      const cloudNotes = snapshot.docs.map(doc => doc.data() as Note);
+      // Update state and save to localStorage for offline use
+      setNotes(cloudNotes);
+      try {
+        localStorage.setItem('qn_notes', JSON.stringify(cloudNotes));
+      } catch (e) { console.error('Failed to save notes to localStorage', e); }
 
       // Ensure loader is visible for at least 5 seconds
       if (loadingStartTime.current) {
@@ -669,12 +652,23 @@ const App: React.FC = () => {
       if (hasChanges) {
         await batch.commit();
         showToast('Offline changes synced successfully!');
+        
+        // Update local state to mark notes as synced
+        const syncedNotesMap = new Map(localNotes.map(n => [n.id, n]));
+        setNotes(prev => prev.map(n => {
+           const syncedNote = syncedNotesMap.get(n.id);
+           // If the note matches the one we just synced (same timestamp), mark it as synced
+           if (syncedNote && syncedNote.timestamp === n.timestamp) {
+               return { ...n, synced: true };
+           }
+           return n;
+        }).filter(n => !n.deletedAt));
       } else {
         showToast('Everything is up to date.', 'info');
+        setNotes(prev => prev.filter(n => !n.deletedAt));
       }
 
       // After syncing, trigger a re-fetch from onSnapshot by cleaning up local state
-      setNotes(prev => prev.filter(n => !n.deletedAt));
       setQuickActions(prev => prev.filter(qa => !qa.deletedAt));
 
     } catch (error) {
