@@ -8,6 +8,7 @@ export interface Note {
   categoryId: string;
   timestamp: number;
   deletedAt: number | null;
+  synced?: boolean;
 }
 
 export interface Category {

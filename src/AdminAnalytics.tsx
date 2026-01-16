@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '@/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, getCountFromServer } from 'firebase/firestore';
 
 interface AnalyticsData {
   totalUsers: number;
@@ -97,16 +97,16 @@ const AnalyticsDataView: React.FC<AnalyticsDataViewProps> = ({ dateFilter, selec
             collection(db, `users/${userId}/notes`),
             ...notesConstraints
           );
-          const notesSnapshot = await getDocs(notesQuery);
-          totalNotes += notesSnapshot.size;
+          const notesSnapshot = await getCountFromServer(notesQuery);
+          totalNotes += notesSnapshot.data().count;
 
           // Categories - no date filtering
-          const categoriesSnapshot = await getDocs(collection(db, `users/${userId}/categories`));
-          totalCategories += categoriesSnapshot.size;
+          const categoriesSnapshot = await getCountFromServer(collection(db, `users/${userId}/categories`));
+          totalCategories += categoriesSnapshot.data().count;
 
           // Quick Actions - no date filtering
-          const qaSnapshot = await getDocs(collection(db, `users/${userId}/quickActions`));
-          totalQuickActions += qaSnapshot.size;
+          const qaSnapshot = await getCountFromServer(collection(db, `users/${userId}/quickActions`));
+          totalQuickActions += qaSnapshot.data().count;
         }
 
         setData({
@@ -133,16 +133,16 @@ const AnalyticsDataView: React.FC<AnalyticsDataViewProps> = ({ dateFilter, selec
           collection(db, `users/${userId}/notes`),
           ...notesConstraints
         );
-        const notesSnapshot = await getDocs(notesQuery);
-        totalNotes = notesSnapshot.size;
+        const notesSnapshot = await getCountFromServer(notesQuery);
+        totalNotes = notesSnapshot.data().count;
 
         // Categories - no date filtering
-        const categoriesSnapshot = await getDocs(collection(db, `users/${selectedUser}/categories`));
-        totalCategories = categoriesSnapshot.size;
+        const categoriesSnapshot = await getCountFromServer(collection(db, `users/${selectedUser}/categories`));
+        totalCategories = categoriesSnapshot.data().count;
 
         // Quick Actions - no date filtering
-        const qaSnapshot = await getDocs(collection(db, `users/${selectedUser}/quickActions`));
-        totalQuickActions = qaSnapshot.size;
+        const qaSnapshot = await getCountFromServer(collection(db, `users/${selectedUser}/quickActions`));
+        totalQuickActions = qaSnapshot.data().count;
 
         setData({
           totalUsers: 1, // Single user selected

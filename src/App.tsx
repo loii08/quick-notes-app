@@ -405,12 +405,29 @@ const App: React.FC = () => {
 
     const notesRef = collection(db, `users/${user.uid}/notes`);
     const notesUnsub = onSnapshot(notesRef, (snapshot) => {
-      const cloudNotes = snapshot.docs.map(doc => doc.data() as Note);
-      // Update state and save to localStorage for offline use
-      setNotes(cloudNotes);
-      try {
-        localStorage.setItem('qn_notes', JSON.stringify(cloudNotes));
-      } catch (e) { console.error('Failed to save notes to localStorage', e); }
+      const cloudNotes = snapshot.docs.map(doc => ({ ...doc.data(), synced: true }) as Note);
+
+      setNotes(prevLocalNotes => {
+        const cloudNotesMap = new Map<string, Note>();
+        cloudNotes.forEach(note => cloudNotesMap.set(note.id, note));
+
+        // Add any unsynced local notes to the map, overwriting any
+        // existing cloud version. These are considered newer.
+        prevLocalNotes.forEach(localNote => {
+          if (localNote.synced === false) {
+            cloudNotesMap.set(localNote.id, localNote);
+          }
+        });
+
+        const finalNotes = Array.from(cloudNotesMap.values()).sort((a, b) => b.timestamp - a.timestamp);
+
+        try {
+          // Persist the merged list of notes
+          localStorage.setItem('qn_notes', JSON.stringify(finalNotes));
+        } catch (e) { console.error('Failed to save merged notes to localStorage', e); }
+
+        return finalNotes;
+      });
 
       // Ensure loader is visible for at least 5 seconds
       if (loadingStartTime.current) {
@@ -622,11 +639,13 @@ const App: React.FC = () => {
 
         if (!cloudNote) {
           // New note created offline, add it to cloud
-          batch.set(doc(db, `users/${user.uid}/notes`, localNote.id), localNote);
+          const { synced, ...noteToSave } = localNote;
+          batch.set(doc(db, `users/${user.uid}/notes`, localNote.id), noteToSave);
           hasChanges = true;
         } else if (cloudNote && localNote.timestamp > cloudNote.timestamp) {
           // Local note is newer, update the cloud
-          batch.set(doc(db, `users/${user.uid}/notes`, localNote.id), localNote, { merge: true });
+          const { synced, ...noteToSave } = localNote;
+          batch.set(doc(db, `users/${user.uid}/notes`, localNote.id), noteToSave, { merge: true });
           hasChanges = true;
         }
       }
@@ -952,52 +971,68 @@ const App: React.FC = () => {
       content,
       categoryId,
       timestamp: Date.now(),
-      deletedAt: null
+      deletedAt: null,
+      synced: false
     };
-    setNotes(prev => [newNote, ...prev]);
-    // Save to local storage immediately for offline persistence
-    localStorage.setItem('qn_notes', JSON.stringify([newNote, ...notes]));
-
-    if (user && db && isOnline) {
-      if (isOnline) {
-        setSyncStatus('syncing');
-        try {
-          await setDoc(doc(db, `users/${user.uid}/notes`, newNote.id), newNote);
-          await updateUserLastUpdate();
-          setSyncStatus('idle');
-          setLastSyncTime(Date.now());
-        } catch (e) {
-          showToast('Failed to save to cloud', 'error');
-          setSyncStatus('error');
-        }
-      }
-    }
-    showToast('Note added');
     
+    // Optimistic update: Update local state and storage immediately
+    setNotes(prev => {
+      const updated = [newNote, ...prev];
+      try {
+        localStorage.setItem('qn_notes', JSON.stringify(updated));
+      } catch (e) { console.error('Failed to save notes to localStorage', e); }
+      return updated;
+    });
+
+    // Reset UI immediately
     setInputValue('');
     if (showMobileAdd) setShowMobileAdd(false);
+    showToast('Note added');
+
+    // Save to cloud in background (fire and forget)
+    if (user && db && isOnline) {
+      (async () => {
+        try {
+          const { synced, ...noteToSave } = newNote;
+          await setDoc(doc(db, `users/${user.uid}/notes`, newNote.id), noteToSave);
+          await updateUserLastUpdate();
+          setLastSyncTime(Date.now());
+          // Mark as synced in UI
+          setNotes(prev => prev.map(n => n.id === newNote.id ? { ...n, synced: true } : n));
+        } catch (e) {
+          console.error("Failed to save note to cloud", e);
+          showToast('Failed to save to cloud', 'error');
+        }
+      })();
+    }
   };
 
   const handleUpdateNote = async (id: string, content: string, categoryId: string, timestamp: number, silent: boolean = false) => {
-    const updatedTimestamp = timestamp || Date.now(); // Use provided timestamp, or now if not provided
+    const updatedTimestamp = timestamp || Date.now();
 
+    // Optimistic UI update
     setNotes(prev => {
-      const updatedNotes = prev.map(n => n.id === id ? { ...n, content, categoryId, timestamp: updatedTimestamp } : n);
-      localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
+      const updatedNotes = prev.map(n => n.id === id ? { ...n, content, categoryId, timestamp: updatedTimestamp, synced: false } : n);
+      try {
+        localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
+      } catch (e) { console.error('Failed to save notes to localStorage', e); }
       return updatedNotes;
     });
     
+    // Background save
     if (user && db && isOnline) {
-        if (!silent) setSyncStatus('syncing');
+      (async () => {
         try {
           await setDoc(doc(db, `users/${user.uid}/notes`, id), { content, categoryId, timestamp: updatedTimestamp }, { merge: true });
           await updateUserLastUpdate();
-          setSyncStatus('idle');
           if (!silent) setLastSyncTime(Date.now());
+          // Mark as synced in UI
+          setNotes(prev => prev.map(n => n.id === id ? { ...n, synced: true } : n));
         } catch (e) {
-          if (!silent) showToast('Update failed', 'error');
-          setSyncStatus('error');
+          console.error("Failed to update note in cloud", e);
+          if (!silent) showToast('Update failed to sync', 'error');
         }
+      })();
     }
   };
 
@@ -1471,20 +1506,11 @@ const App: React.FC = () => {
     });
   }, [notes, currentCategory, filterMode, customDate]);
 
-  const formatHeaderDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      month: 'long', 
-      day: 'numeric', 
-      year: 'numeric' 
-    });
-  };
-
   const activeCategoryName = currentCategory === 'all' 
     ? (categories.find(c => c.id === 'general')?.name || 'General')
     : categories.find(c => c.id === currentCategory)?.name;
 
-  const renderNotes = () => {
+  const groupedNotes = useMemo(() => {
     const groups: { [key: string]: Note[] } = {};
     
     filteredNotes.forEach(note => {
@@ -1498,8 +1524,19 @@ const App: React.FC = () => {
     });
 
     const sortedDateKeys = Object.keys(groups).sort().reverse();
+    
+    return sortedDateKeys.map(dateKey => {
+      const notesInGroup = groups[dateKey].sort((a, b) => b.timestamp - a.timestamp);
+      return {
+        dateKey,
+        notesInGroup,
+        groupDateTimestamp: notesInGroup[0].timestamp
+      };
+    });
+  }, [filteredNotes]);
 
-    if (sortedDateKeys.length === 0) {
+  const renderNotes = () => {
+    if (groupedNotes.length === 0) {
       return (
         <div className="text-center py-20 bg-surface dark:bg-gray-800 rounded-3xl border border-borderLight dark:border-gray-700 shadow-sm">
           <p className="text-textMain dark:text-gray-400 text-lg font-medium opacity-60">No notes found for this filter ✨</p>
@@ -1507,15 +1544,17 @@ const App: React.FC = () => {
       );
     }
 
-    return sortedDateKeys.map((dateKey, groupIdx) => {
-      const notesInGroup = groups[dateKey].sort((a, b) => b.timestamp - a.timestamp);
-      const groupDateTimestamp = notesInGroup[0].timestamp;
-
+    return groupedNotes.map(({ dateKey, notesInGroup, groupDateTimestamp }, groupIdx) => {
       return (
         <div key={dateKey} className="mb-8 bg-surface dark:bg-gray-800 rounded-2xl shadow-sm border border-borderLight dark:border-gray-700 overflow-hidden animate-slide-up" style={{ animationDelay: `${groupIdx * 50}ms` }}>
           <div className="bg-bgPage dark:bg-gray-900/50 px-5 py-4 border-b border-borderLight dark:border-gray-700 flex items-center justify-between">
             <h3 className="font-bold text-textMain dark:text-gray-100 text-lg tracking-tight">
-              {formatHeaderDate(groupDateTimestamp)}
+              {new Date(groupDateTimestamp).toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                month: 'long', 
+                day: 'numeric', 
+                year: 'numeric' 
+              })}
             </h3>
             <span className="bg-primary/20 dark:bg-indigo-900/50 text-textMain dark:text-indigo-300 text-xs font-bold px-3 py-1 rounded-full">
               {notesInGroup.length} {notesInGroup.length === 1 ? 'Note' : 'Notes'}
@@ -1559,7 +1598,10 @@ const App: React.FC = () => {
       {appLoadingMessage && <AppLoader />}
       <div className={`min-h-screen flex flex-col font-sans text-textMain dark:text-gray-100 bg-bgPage transition-colors duration-300 ${appLoadingMessage ? 'opacity-0' : 'opacity-100'}`}>
         {showBackOnlineBanner ? (
-          <div className="bg-green-500 text-center py-2 text-white font-semibold fixed top-0 w-full z-[100] animate-fade-in">
+          <div
+            className="bg-green-500 text-center py-2 text-white font-semibold fixed top-0 w-full z-[100] animate-fade-in"
+            style={{ paddingTop: `calc(0.5rem + env(safe-area-inset-top))` }}
+          >
             <button onClick={syncOfflineChanges} className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/40 rounded-md px-2 py-0.5 text-xs">Sync Now</button>
             <div className="flex items-center justify-center gap-2">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
@@ -1567,7 +1609,10 @@ const App: React.FC = () => {
             </div>
           </div>
         ) : !isOnline && (
-          <div className="bg-red-500 text-center py-2 text-white font-semibold fixed top-0 w-full z-[100] animate-fade-in">
+          <div
+            className="bg-red-500 text-center py-2 text-white font-semibold fixed top-0 w-full z-[100] animate-fade-in"
+            style={{ paddingTop: `calc(0.5rem + env(safe-area-inset-top))` }}
+          >
             <div className="flex items-center justify-center gap-2">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636a9 9 0 010 12.728m-12.728 0a9 9 0 010-12.728m12.728 0L5.636 18.364m0-12.728L18.364 5.636" /></svg>
               You are currently offline.

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { db, auth } from '@/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { collection, getDocs, query, where, getCountFromServer } from 'firebase/firestore';
 import { useAuthStatus } from './useAuthStatus';
 
 interface AnalyticsData {
@@ -83,16 +83,16 @@ const AnalyticsDataView: React.FC<AnalyticsDataViewProps> = ({ dateFilter, userI
         collection(db, `users/${userId}/notes`),
         ...notesConstraints
       );
-      const notesSnapshot = await getDocs(notesQuery);
-      const totalNotes = notesSnapshot.size;
+      const notesSnapshot = await getCountFromServer(notesQuery);
+      const totalNotes = notesSnapshot.data().count;
 
       // Categories - no date filtering
-      const categoriesSnapshot = await getDocs(collection(db, `users/${userId}/categories`));
-      totalCategories = categoriesSnapshot.size;
+      const categoriesSnapshot = await getCountFromServer(collection(db, `users/${userId}/categories`));
+      totalCategories = categoriesSnapshot.data().count;
 
       // Quick Actions - no date filtering
-      const qaSnapshot = await getDocs(collection(db, `users/${userId}/quickActions`));
-      totalQuickActions = qaSnapshot.size;
+      const qaSnapshot = await getCountFromServer(collection(db, `users/${userId}/quickActions`));
+      totalQuickActions = qaSnapshot.data().count;
 
       setData({
         totalNotes,

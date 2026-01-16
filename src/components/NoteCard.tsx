@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Note, Category } from '../types';
+import { formatTimeAgo } from '../utils/dateUtils';
 
 interface NoteCardProps {
   note: Note;
@@ -132,8 +133,6 @@ const NoteCard: React.FC<NoteCardProps> = ({
     }
   };
 
-  const timeString = new Date(note.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
   return (
     <div 
       className={`w-full bg-white dark:bg-gray-800 transition-colors duration-200 border-l-4 ${isActive ? 'bg-indigo-50/20 dark:bg-indigo-900/20' : 'hover:bg-gray-50/50 dark:hover:bg-gray-700/50'}`}
@@ -147,7 +146,14 @@ const NoteCard: React.FC<NoteCardProps> = ({
           >
             {categoryName}
           </span>
-          <span className="text-[11px] text-gray-400 dark:text-gray-500 font-medium tracking-wide">{timeString}</span>
+          <div className="text-[11px] text-gray-400 dark:text-gray-500 font-medium tracking-wide flex flex-col items-end">
+            {formatTimeAgo(note.timestamp)}
+            {note.synced === false && (
+              <span className="font-bold text-[9px] uppercase tracking-wider">
+                Draft
+              </span>
+            )}
+          </div>
         </div>
 
         {isActive ? (
