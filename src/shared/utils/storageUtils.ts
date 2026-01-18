@@ -3,7 +3,7 @@
  */
 
 import { STORAGE_KEYS } from '../constants';
-import type { Note, Category, QuickAction } from '../types';
+import type { Note, Category, QuickAction, UnitOfMeasure } from '../types';
 
 /**
  * Safely gets an item from localStorage
@@ -203,6 +203,23 @@ export const saveRememberMe = (rememberMe: boolean, email: string): boolean => {
     success = removeStorageItem(STORAGE_KEYS.REMEMBER_EMAIL) && success;
   }
   return success;
+};
+
+/**
+ * Gets units from localStorage
+ * @returns Array of units
+ */
+export const getStoredUnits = (): UnitOfMeasure[] => {
+  return getStorageItem<UnitOfMeasure[]>(STORAGE_KEYS.UNITS, []);
+};
+
+/**
+ * Saves units to localStorage
+ * @param units - Units to save
+ * @returns true if successful
+ */
+export const saveStoredUnits = (units: UnitOfMeasure[]): boolean => {
+  return setStorageItem(STORAGE_KEYS.UNITS, units);
 };
 
 /**

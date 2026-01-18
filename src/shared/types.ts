@@ -11,15 +11,27 @@ export interface Note {
   synced?: boolean;
 }
 
+export type CategoryType = 'text' | 'quantifiable';
+
 export interface Category {
   id: string;
   name: string;
+  category_type: CategoryType;
+}
+
+export interface UnitOfMeasure {
+  id: string;
+  unit_name: string;
+  abbreviation: string;
+  description?: string;
 }
 
 export interface QuickAction {
   id: string;
   text: string;
   categoryId: string;
+  quantity?: number;
+  unitId?: string;
   deletedAt?: number | null;
 }
 

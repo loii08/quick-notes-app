@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Routes, Route, Link, useLocation, Outlet, Navigate } from 'react-router-dom';
-import { Note, Category, QuickAction, FilterMode, ToastMessage, ToastType } from '@shared/types';
+import { Note, Category, QuickAction, UnitOfMeasure, CategoryType, FilterMode, ToastMessage, ToastType } from '@shared/types';
 import Modal from '@shared/components/Modal';
 import ConfirmationModal from '@shared/components/ConfirmationModal';
 import NoteCard from '@features/notes/NoteCard';
@@ -19,11 +19,12 @@ import AdminDashboard from '@features/admin/AdminDashboard';
 import UserList from '@features/admin/UserList';
 import NotAuthorized from '@features/admin/NotAuthorized';
 import SetPasswordModal from '@features/auth/SetPasswordModal';
+import UnitsManager from '@features/admin/UnitsManager';
 
 import { auth, db, googleProvider } from '@shared/firebase';
 import { TIMINGS, TIME, DEFAULTS, DEFAULT_CATEGORIES, DEFAULT_QUICK_ACTIONS, STORAGE_KEYS } from '@shared/constants';
 import { formatTimeAgo, formatHeaderDate, toDatetimeLocal, isToday, isYesterday, isInCurrentWeek, isInCurrentMonth, isInCurrentYear, cleanDate } from '@shared/utils/dateUtils';
-import { getStoredNotes, saveStoredNotes, getStoredCategories, saveStoredCategories, getStoredQuickActions, saveStoredQuickActions, getLastSyncTime, saveLastSyncTime, getAppSettings, saveAppSettings, getRememberMe, getRememberedEmail, saveRememberMe } from '@shared/utils/storageUtils';
+import { getStoredNotes, saveStoredNotes, getStoredCategories, saveStoredCategories, getStoredQuickActions, saveStoredQuickActions, getLastSyncTime, saveLastSyncTime, getAppSettings, saveAppSettings, getRememberMe, getRememberedEmail, saveRememberMe, getStoredUnits, saveStoredUnits } from '@shared/utils/storageUtils';
 import { sanitizeCategoryName, sanitizeQuickActionText, sanitizeNoteContent } from '@shared/utils/validationUtils';
 import { ERROR_MESSAGES, getAuthErrorMessage, getSuccessMessage } from '@shared/utils/errorMessages';
 import { 
@@ -221,6 +222,14 @@ const App: React.FC = () => {
     } catch (e) { return DEFAULT_QUICK_ACTIONS; }
   });
 
+  const [units, setUnits] = useState<UnitOfMeasure[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const saved = localStorage.getItem('qn_units');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) { return []; }
+  });
+
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(() => {
     try {
       const saved = localStorage.getItem('qn_last_sync');
@@ -254,6 +263,7 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [showQAManager, setShowQAManager] = useState(false);
+  const [showUnitsManager, setShowUnitsManager] = useState(false);
   const [showMobileAdd, setShowMobileAdd] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showClearAllNotesConfirm, setShowClearAllNotesConfirm] = useState(false);
@@ -262,6 +272,101 @@ const App: React.FC = () => {
   const [clearNotesError, setClearNotesError] = useState(false);
   const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
   const clearNotesInputRef = useRef<HTMLInputElement>(null);
+  
+  // QuickAction form state
+  const [newQA, setNewQA] = useState({
+    text: '',
+    categoryId: '',
+    quantity: '',
+    unitId: ''
+  });
+
+  // Category form state
+  const [newCategory, setNewCategory] = useState({
+    name: '',
+    category_type: 'text' as CategoryType
+  });
+
+  // Validation state
+  const [validationErrors, setValidationErrors] = useState({
+    qaText: '',
+    qaCategory: '',
+    qaQuantity: '',
+    qaUnit: '',
+    categoryName: ''
+  });
+
+  // Validation functions
+  const validateQuickAction = useCallback(() => {
+    const errors = { ...validationErrors };
+    let isValid = true;
+
+    // Reset errors
+    Object.keys(errors).forEach(key => {
+      errors[key as keyof typeof errors] = '';
+    });
+
+    // Validate text
+    if (!newQA.text.trim()) {
+      errors.qaText = 'Action name is required';
+      isValid = false;
+    } else if (newQA.text.length > 100) {
+      errors.qaText = 'Action name must be 100 characters or less';
+      isValid = false;
+    }
+
+    // Validate category
+    if (!newQA.categoryId) {
+      errors.qaCategory = 'Please select a category';
+      isValid = false;
+    }
+
+    // Validate quantifiable fields
+    if (newQA.categoryId) {
+      const selectedCategory = categories.find(c => c.id === newQA.categoryId);
+      const isQuantifiable = selectedCategory?.category_type === 'quantifiable';
+
+      if (isQuantifiable) {
+        if (!newQA.quantity || parseFloat(newQA.quantity) <= 0) {
+          errors.qaQuantity = 'Quantity must be greater than 0';
+          isValid = false;
+        }
+
+        if (!newQA.unitId) {
+          errors.qaUnit = 'Please select a unit of measure';
+          isValid = false;
+        } else if (units.length === 0) {
+          errors.qaUnit = 'No units available. Please add units first';
+          isValid = false;
+        }
+      }
+    }
+
+    setValidationErrors(errors);
+    return isValid;
+  }, [newQA, categories, units, validationErrors]);
+
+  const validateCategory = useCallback(() => {
+    const errors = { ...validationErrors };
+    let isValid = true;
+
+    // Reset category error
+    errors.categoryName = '';
+
+    if (!newCategory.name.trim()) {
+      errors.categoryName = 'Category name is required';
+      isValid = false;
+    } else if (newCategory.name.length > 50) {
+      errors.categoryName = 'Category name must be 50 characters or less';
+      isValid = false;
+    } else if (categories.some(cat => cat.name.toLowerCase() === newCategory.name.toLowerCase())) {
+      errors.categoryName = 'Category already exists';
+      isValid = false;
+    }
+
+    setValidationErrors(errors);
+    return isValid;
+  }, [newCategory, categories, validationErrors]);
 
   useEffect(() => {
     try {
@@ -494,12 +599,23 @@ const App: React.FC = () => {
       }
     });
 
+    // Units listener
+    const unitsRef = collection(db, `users/${user.uid}/units`);
+    const unitsUnsub = onSnapshot(unitsRef, (snapshot) => {
+      const cloudUnits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as UnitOfMeasure));
+      setUnits(cloudUnits);
+      try {
+        localStorage.setItem('qn_units', JSON.stringify(cloudUnits));
+      } catch (e) { console.error('Failed to save units to localStorage', e); }
+    });
+
     return () => {
       notesUnsub();
       catsUnsub();
       qaUnsub();
       settingsUnsub();
       userDocUnsub();
+      unitsUnsub();
     };
   }, [user]);
 
@@ -878,11 +994,15 @@ const App: React.FC = () => {
   const handleAddNote = useCallback((content: string) => {
     if (!content.trim()) return;
     
+    // Use currentCategory, default to 'general' if 'all' is selected
+    const categoryId = currentCategory === 'all' ? 'general' : currentCategory;
+    
     const newNote: Note = {
       id: generateId(),
       content: sanitizeNoteContent(content),
-      categoryId: activeCategoryName === 'General' ? 'general' : activeCategoryName,
+      categoryId: categoryId,
       timestamp: Date.now(),
+      deletedAt: null,
       synced: false
     };
 
@@ -1063,22 +1183,20 @@ const App: React.FC = () => {
     setSelectedNoteIds(new Set());
   };
 
-  const handleAddCategory = async (name: string) => {
-    const trimmedName = name.trim();
-    if (!trimmedName) return;
-
-    // Check for duplicates (case-insensitive)
-    if (categories.some(cat => cat.name.toLowerCase() === trimmedName.toLowerCase())) {
-      showToast(`Category "${trimmedName}" already exists.`, 'error');
+  const handleAddCategory = async (name: string, category_type: CategoryType = 'text') => {
+    // Validate before proceeding
+    if (!validateCategory()) {
       return;
     }
+
+    const trimmedName = name.trim();
 
     if (!isOnline) {
       showToast('You must be online to add a new category.', 'error');
       return;
     }
     const id = trimmedName.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
-    const newCat = { id, name: trimmedName };
+    const newCat = { id, name: trimmedName, category_type };
 
     if (user && db) {
       if (isOnline) {
@@ -1177,10 +1295,21 @@ const App: React.FC = () => {
     setConfirmDeleteCategoryId(null);
   };
 
-  const handleAddQA = async (text: string, categoryId: string) => {
-    if (!text.trim()) return;
+  const handleAddQA = async (text: string, categoryId: string, quantity?: number, unitId?: string) => {
+    // Validate before proceeding
+    if (!validateQuickAction()) {
+      return;
+    }
 
-    const newQA = { id: generateId(), text, categoryId };
+    const selectedCategory = categories.find(c => c.id === categoryId);
+    const isQuantifiable = selectedCategory?.category_type === 'quantifiable';
+
+    const newQA = { 
+      id: generateId(), 
+      text: text.trim(), 
+      categoryId,
+      ...(isQuantifiable && { quantity, unitId })
+    };
     setQuickActions(prev => {
       const newActions = [...prev, newQA];
       // Save to local storage immediately for offline persistence
@@ -1681,6 +1810,10 @@ const App: React.FC = () => {
                         <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                         Settings
                       </button>
+                      <button onClick={() => { setShowUnitsManager(true); setIsMenuOpen(false); }} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" /></svg>
+                        Units
+                      </button>
                       {user && (
                         <button
                           onClick={() => { setShowSetPasswordModal(true); setIsMenuOpen(false); }}
@@ -2087,33 +2220,87 @@ const App: React.FC = () => {
 
           <Modal isOpen={showCategoryManager} onClose={() => setShowCategoryManager(false)} title="Manage Categories">
             <div className="flex flex-col gap-4">
-              <div className="flex gap-2">
-                <input 
-                  id="new-cat-input"
-                  type="text" 
-                  placeholder="New category name..."
-                  className="flex-1 p-3 border border-borderLight dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-primary bg-bgPage dark:bg-gray-700 dark:text-white"
-                  onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                          handleAddCategory((e.target as HTMLInputElement).value);
-                          (e.target as HTMLInputElement).value = '';
-                      }
-                  }}
-                />
-                <button 
-                  onClick={() => {
-                      const input = document.getElementById('new-cat-input') as HTMLInputElement;
-                      handleAddCategory(input.value);
-                      input.value = '';
-                      if (isOnline) input.value = '';
-                  }}
-                  disabled={syncStatus === 'syncing'}
-                  className="px-4 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors w-24 flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-70"
-                > 
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-2">Category Types</h4>
+                <div className="space-y-1 text-xs text-blue-700 dark:text-blue-400">
+                  <div className="flex items-center gap-2">
+                    <span>📝</span>
+                    <span><strong>Text:</strong> For simple notes and text-based actions</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span>📊</span>
+                    <span><strong>Quantifiable:</strong> For actions with quantities and units (e.g., "5 kg apples")</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <div>
+                  <div className="relative">
+                    <input 
+                      id="new-cat-input"
+                      type="text" 
+                      placeholder="New category name..."
+                      value={newCategory.name}
+                      onChange={(e) => {
+                        setNewCategory({ ...newCategory, name: e.target.value });
+                        // Clear error on change
+                        if (validationErrors.categoryName) {
+                          setValidationErrors({ ...validationErrors, categoryName: '' });
+                        }
+                      }}
+                      className={`w-full p-3 pr-16 border rounded-xl text-sm focus:outline-none focus:border-primary bg-bgPage dark:bg-gray-700 dark:text-white ${
+                        validationErrors.categoryName 
+                          ? 'border-red-300 dark:border-red-600' 
+                          : 'border-borderLight dark:border-gray-600'
+                      }`}
+                      maxLength={50}
+                      onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                              if (validateCategory()) {
+                                  handleAddCategory(newCategory.name, newCategory.category_type);
+                                  setNewCategory({ name: '', category_type: 'text' });
+                              }
+                          }
+                      }}
+                    />
+                    <div className={`absolute right-3 top-1/2 transform -translate-y-1/2 text-xs ${
+                      newCategory.name.length > 40 
+                        ? 'text-amber-500 dark:text-amber-400' 
+                        : 'text-gray-400 dark:text-gray-500'
+                    }`}>
+                      {newCategory.name.length}/50
+                    </div>
+                  </div>
+                  {validationErrors.categoryName && (
+                    <div className="mt-1 text-xs text-red-500 dark:text-red-400">
+                      {validationErrors.categoryName}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <select
+                    value={newCategory.category_type}
+                    onChange={(e) => setNewCategory({ ...newCategory, category_type: e.target.value as CategoryType })}
+                    className="flex-1 p-3 border border-borderLight dark:border-gray-600 rounded-xl text-sm text-gray-600 dark:text-gray-300 bg-bgPage dark:bg-gray-700 focus:outline-none focus:border-primary"
+                  >
+                    <option value="text">Text</option>
+                    <option value="quantifiable">Quantifiable</option>
+                  </select>
+                  <button 
+                    onClick={() => {
+                        if (validateCategory()) {
+                            handleAddCategory(newCategory.name, newCategory.category_type);
+                            setNewCategory({ name: '', category_type: 'text' });
+                        }
+                    }}
+                    disabled={syncStatus === 'syncing' || !newCategory.name.trim()}
+                    className="px-4 bg-primary text-textOnPrimary font-bold rounded-xl hover:bg-primaryDark transition-colors w-24 flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-70"
+                  > 
                   {syncStatus === 'syncing' ? (
                     <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                   ) : "Add"}
-                </button>
+                  </button>
+                </div>
               </div>
               <div className="max-h-[300px] overflow-y-auto pr-1 flex flex-col gap-2">
                 {categories.map((cat) => (
@@ -2135,6 +2322,13 @@ const App: React.FC = () => {
                         <div className="flex items-center gap-2">
                             <span className="font-medium text-textMain dark:text-gray-200">{cat.name}</span>
                             {cat.id === 'general' && <span className="text-[10px] bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-300 px-1.5 py-0.5 rounded">Default</span>}
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                              cat.category_type === 'quantifiable' 
+                                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' 
+                                : 'bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
+                            }`}>
+                              {cat.category_type === 'quantifiable' ? '📊' : '📝'} {cat.category_type}
+                            </span>
                         </div>
                     )}
                     {cat.id !== 'general' && (
@@ -2199,32 +2393,189 @@ const App: React.FC = () => {
             <div className="flex flex-col gap-4 hide-scrollbar">
               <div className="p-4 bg-primary/10 dark:bg-indigo-900/20 rounded-xl border border-primary/20 dark:border-indigo-900/30">
                  <h4 className="text-xs font-bold text-textMain dark:text-indigo-400 uppercase tracking-wide mb-3">Create New Action</h4>
-                 <div className="flex flex-col gap-2">
-                    <input 
-                      id="new-qa-input"
-                      type="text" 
-                      placeholder="Action name (e.g. Shopping List)"
-                      className="w-full p-3 border border-borderLight dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-primary bg-white dark:bg-gray-700 dark:text-white"
-                    />
-                    <div className="flex gap-2">
-                        <select id="new-qa-cat" className="p-3 border border-borderLight dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 flex-1 focus:outline-none">
-                            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                        <button 
-                          onClick={() => {
-                              const input = document.getElementById('new-qa-input') as HTMLInputElement;
-                              const select = document.getElementById('new-qa-cat') as HTMLSelectElement;
-                              handleAddQA(input.value, select.value);
-                              if (isOnline) input.value = '';
+                 <div className="flex flex-col gap-3">
+                    <div>
+                      <div className="relative">
+                        <input 
+                          id="new-qa-input"
+                          type="text" 
+                          placeholder="Action name (e.g. Shopping List)"
+                          value={newQA.text}
+                          onChange={(e) => {
+                            setNewQA({ ...newQA, text: e.target.value });
+                            // Clear error on change
+                            if (validationErrors.qaText) {
+                              setValidationErrors({ ...validationErrors, qaText: '' });
+                            }
                           }}
-                          disabled={syncStatus === 'syncing'}
-                          className="px-6 bg-primary text-textOnPrimary font-bold rounded-lg hover:bg-primaryDark transition-colors shadow-sm w-28 flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-70"
-                        > 
-                          {syncStatus === 'syncing' ? (
-                            <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                          ) : "Create"}
-                        </button>
+                          className={`w-full p-3 pr-16 border rounded-lg text-sm focus:outline-none focus:border-primary bg-white dark:bg-gray-700 dark:text-white ${
+                            validationErrors.qaText 
+                              ? 'border-red-300 dark:border-red-600' 
+                              : 'border-borderLight dark:border-gray-600'
+                          }`}
+                          maxLength={100}
+                        />
+                        <div className={`absolute right-3 top-1/2 transform -translate-y-1/2 text-xs ${
+                          newQA.text.length > 80 
+                            ? 'text-amber-500 dark:text-amber-400' 
+                            : 'text-gray-400 dark:text-gray-500'
+                        }`}>
+                          {newQA.text.length}/100
+                        </div>
+                      </div>
+                      {validationErrors.qaText && (
+                        <div className="mt-1 text-xs text-red-500 dark:text-red-400">
+                          {validationErrors.qaText}
+                        </div>
+                      )}
                     </div>
+                    
+                    <div>
+                      <select 
+                        id="new-qa-cat" 
+                        value={newQA.categoryId}
+                        onChange={(e) => {
+                          setNewQA({ ...newQA, categoryId: e.target.value, quantity: '', unitId: '' });
+                          // Clear errors on change
+                          if (validationErrors.qaCategory || validationErrors.qaQuantity || validationErrors.qaUnit) {
+                            setValidationErrors({ 
+                              ...validationErrors, 
+                              qaCategory: '', 
+                              qaQuantity: '', 
+                              qaUnit: '' 
+                            });
+                          }
+                        }}
+                        className={`w-full p-3 border rounded-lg text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 focus:outline-none focus:border-primary ${
+                          validationErrors.qaCategory 
+                            ? 'border-red-300 dark:border-red-600' 
+                            : 'border-borderLight dark:border-gray-600'
+                        }`}
+                      >
+                        <option value="">Select Category</option>
+                        {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      {validationErrors.qaCategory && (
+                        <div className="mt-1 text-xs text-red-500 dark:text-red-400">
+                          {validationErrors.qaCategory}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Dynamic fields based on category type */}
+                    {newQA.categoryId && (() => {
+                      const selectedCategory = categories.find(c => c.id === newQA.categoryId);
+                      const isQuantifiable = selectedCategory?.category_type === 'quantifiable';
+                      
+                      if (!isQuantifiable) return null;
+                      
+                      return (
+                        <div className="flex flex-col gap-3">
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <input
+                                type="number"
+                                placeholder="Quantity"
+                                value={newQA.quantity}
+                                onChange={(e) => {
+                                  setNewQA({ ...newQA, quantity: e.target.value });
+                                  // Clear error on change
+                                  if (validationErrors.qaQuantity) {
+                                    setValidationErrors({ ...validationErrors, qaQuantity: '' });
+                                  }
+                                }}
+                                className={`w-full p-3 border rounded-lg text-sm focus:outline-none focus:border-primary bg-white dark:bg-gray-700 dark:text-white ${
+                                  validationErrors.qaQuantity 
+                                    ? 'border-red-300 dark:border-red-600' 
+                                    : 'border-borderLight dark:border-gray-600'
+                                }`}
+                                min="0"
+                                step="any"
+                              />
+                              {validationErrors.qaQuantity && (
+                                <div className="mt-1 text-xs text-red-500 dark:text-red-400">
+                                  {validationErrors.qaQuantity}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1">
+                              <select
+                                value={newQA.unitId}
+                                onChange={(e) => {
+                                  setNewQA({ ...newQA, unitId: e.target.value });
+                                  // Clear error on change
+                                  if (validationErrors.qaUnit) {
+                                    setValidationErrors({ ...validationErrors, qaUnit: '' });
+                                  }
+                                }}
+                                className={`w-full p-3 border rounded-lg text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-700 focus:outline-none focus:border-primary ${
+                                  validationErrors.qaUnit 
+                                    ? 'border-red-300 dark:border-red-600' 
+                                    : 'border-borderLight dark:border-gray-600'
+                                }`}
+                              >
+                                <option value="">Select Unit</option>
+                                {units.length === 0 ? (
+                                  <option value="" disabled>No units available</option>
+                                ) : (
+                                  units.map(unit => (
+                                    <option key={unit.id} value={unit.id}>
+                                      {unit.abbreviation} ({unit.unit_name})
+                                    </option>
+                                  ))
+                                )}
+                              </select>
+                              {validationErrors.qaUnit && (
+                                <div className="mt-1 text-xs text-red-500 dark:text-red-400">
+                                  {validationErrors.qaUnit}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    
+                    {/* Show message if no units available for quantifiable category */}
+                    {newQA.categoryId && (() => {
+                      const selectedCategory = categories.find(c => c.id === newQA.categoryId);
+                      const isQuantifiable = selectedCategory?.category_type === 'quantifiable';
+                      
+                      return isQuantifiable && units.length === 0 ? (
+                        <div className="text-sm text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded border border-amber-200 dark:border-amber-800">
+                          ⚠️ No units available. 
+                          <button 
+                            onClick={() => { setShowQAManager(false); setShowUnitsManager(true); }}
+                            className="ml-1 underline hover:no-underline"
+                          >
+                            Add units first
+                          </button>
+                        </div>
+                      ) : null;
+                    })()}
+                    
+                    <button 
+                      onClick={() => {
+                        const selectedCategory = categories.find(c => c.id === newQA.categoryId);
+                        const isQuantifiable = selectedCategory?.category_type === 'quantifiable';
+                        
+                        handleAddQA(
+                          newQA.text, 
+                          newQA.categoryId,
+                          isQuantifiable ? parseFloat(newQA.quantity) : undefined,
+                          isQuantifiable ? newQA.unitId : undefined
+                        );
+                        if (isOnline) {
+                          setNewQA({ text: '', categoryId: '', quantity: '', unitId: '' });
+                        }
+                      }}
+                      disabled={syncStatus === 'syncing' || !newQA.text.trim() || !newQA.categoryId}
+                      className="px-6 bg-primary text-textOnPrimary font-bold rounded-lg hover:bg-primaryDark transition-colors shadow-sm w-full flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-70"
+                    > 
+                      {syncStatus === 'syncing' ? (
+                        <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      ) : "Create Action"}
+                    </button>
                  </div>
               </div>
               <div className="border-t border-borderLight dark:border-gray-700 my-1"></div>
@@ -2288,6 +2639,17 @@ const App: React.FC = () => {
                               <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
                                 <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: getCategoryColor(qa.categoryId) }}></span>
                                 {categories.find(c => c.id === qa.categoryId)?.name || 'Unknown'}
+                                {qa.quantity && qa.unitId && (() => {
+                                  const unit = units.find(u => u.id === qa.unitId);
+                                  return unit ? (
+                                    <>
+                                      <span className="text-gray-300">•</span>
+                                      <span className="font-medium text-primary dark:text-indigo-400">
+                                        {qa.quantity} {unit.abbreviation}
+                                      </span>
+                                    </>
+                                  ) : null;
+                                })()}
                               </div>
                             </div>
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ">
@@ -2378,6 +2740,11 @@ const App: React.FC = () => {
             user={user}
             onSuccess={showToast}
             onError={(msg) => showToast(msg, 'error')}
+          />
+          
+          <UnitsManager
+            isOpen={showUnitsManager}
+            onClose={() => setShowUnitsManager(false)}
           />
         </>
       )}

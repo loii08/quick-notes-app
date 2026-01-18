@@ -29,9 +29,9 @@ export const DEFAULTS = {
 
 // Default Categories
 export const DEFAULT_CATEGORIES = [
-  { id: 'general', name: 'General' },
-  { id: 'work', name: 'Work' },
-  { id: 'ideas', name: 'Ideas' },
+  { id: 'general', name: 'General', category_type: 'text' as const },
+  { id: 'work', name: 'Work', category_type: 'text' as const },
+  { id: 'ideas', name: 'Ideas', category_type: 'text' as const },
 ] as const;
 
 // Default Quick Actions
@@ -45,14 +45,14 @@ export const STORAGE_KEYS = {
   NOTES: 'qn_notes',
   CATEGORIES: 'qn_cats',
   QUICK_ACTIONS: 'qn_qa',
+  UNITS: 'qn_units',
   LAST_SYNC: 'qn_last_sync',
   REMEMBER_ME: 'qn_remember',
   REMEMBER_EMAIL: 'qn_remember_email',
-  SETTINGS_UPDATED: 'qn_settings_updated',
   APP_NAME: 'app_name',
   APP_SUBTITLE: 'app_subtitle',
   APP_THEME: 'app_theme',
-  THEME: 'theme',
+  SETTINGS_UPDATED: 'qn_settings_updated',
 } as const;
 
 // Validation Rules
