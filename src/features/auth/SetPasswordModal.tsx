@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import Modal from './Modal';
-import { User, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import Modal from '@shared/components/Modal';
+import { User, updatePassword, EmailAuthProvider, reauthenticateWithCredential, linkWithCredential } from 'firebase/auth';
 
 interface SetPasswordModalProps {
   isOpen: boolean;

@@ -70,7 +70,10 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           {cancelText}
         </button>
         <button 
-          onClick={handleConfirm}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleConfirm();
+          }}
           disabled={disabled || disableConfirm || isConfirming}
           className={`px-5 py-2 text-white rounded-lg font-semibold shadow-sm transition-all active:scale-95 text-sm w-28 flex items-center justify-center ${
             isDestructive 

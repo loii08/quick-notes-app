@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
-import { db } from '@/firebase';
-import ToastContainer from '@/components/ToastContainer';
-import { useAuthStatus } from '@/useAuthStatus';
-import { ToastMessage, ToastType } from '@/types';
+import { db } from '@shared/firebase';
+import ToastContainer from '@shared/components/ToastContainer';
+import { useAuthStatus } from '@features/auth';
+import { ToastMessage, ToastType } from '@shared/types';
 
 const AdminSettings: React.FC = () => {
   const { user } = useAuthStatus();

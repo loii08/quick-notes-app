@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db, auth } from '@/firebase';
+import { db, auth } from '@shared/firebase';
 import { collection, getDocs, query, where, getCountFromServer } from 'firebase/firestore';
 
 interface AnalyticsData {

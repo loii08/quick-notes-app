@@ -1,31 +1,23 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Routes, Route, Link, useLocation, Outlet, Navigate } from 'react-router-dom';
-import { Note, Category, QuickAction, FilterMode, ToastMessage, ToastType } from './types';
-import Modal from './components/Modal';
-import ConfirmationModal from './components/ConfirmationModal';
-import NoteCard from './components/NoteCard';
-import ToastContainer from './components/ToastContainer';
-import OnboardingModal from './components/OnboardingModal';
-import SkeletonLoader from './components/SkeletonLoader';
-import LandingPage from './components/LandingPage';
-import LoginModal from './components/LoginModal';
-import AppLoader from './components/AppLoader';
-import AdminAnalytics from './AdminAnalytics';
-import UserAnalytics from './UserAnalytics';
-import AdminSettings from './AdminSettings';
-import AdminRoute from './AdminRoute';
-import { useAuthStatus } from './useAuthStatus';
-import AdminDashboard from './AdminDashboard';
-import UserList from './UserList';
-import NotAuthorized from './NotAuthorized';
-import SetPasswordModal from './components/SetPasswordModal';
+import { Note, Category, QuickAction, FilterMode, ToastMessage, ToastType } from '@shared/types';
+import Modal from '@shared/components/Modal';
+import ConfirmationModal from '@shared/components/ConfirmationModal';
+import NoteCard from '@features/notes/NoteCard';
+import ToastContainer from '@shared/components/ToastContainer';
+import OnboardingModal from '@shared/components/OnboardingModal';
+import SkeletonLoader from '@shared/components/SkeletonLoader';
+import LandingPage from '@shared/components/LandingPage';
+import { LoginModal, SetPasswordModal, useAuthStatus } from '@features/auth';
+import AppLoader from '@shared/components/AppLoader';
+import { AdminDashboard, AdminAnalytics, AdminSettings, AdminRoute, UserList, UserAnalytics, NotAuthorized } from '@features/admin';
 
-import { auth, db, googleProvider } from '@/firebase';
-import { TIMINGS, TIME, DEFAULTS, DEFAULT_CATEGORIES, DEFAULT_QUICK_ACTIONS, STORAGE_KEYS } from '@/constants';
-import { formatTimeAgo, formatHeaderDate, toDatetimeLocal, isToday, isYesterday, isInCurrentWeek, isInCurrentMonth, isInCurrentYear, cleanDate } from '@/utils/dateUtils';
-import { getStoredNotes, saveStoredNotes, getStoredCategories, saveStoredCategories, getStoredQuickActions, saveStoredQuickActions, getLastSyncTime, saveLastSyncTime, getAppSettings, saveAppSettings, getRememberMe, getRememberedEmail, saveRememberMe } from '@/utils/storageUtils';
-import { sanitizeCategoryName, sanitizeQuickActionText, sanitizeNoteContent } from '@/utils/validationUtils';
-import { ERROR_MESSAGES, getAuthErrorMessage, getSuccessMessage } from '@/utils/errorMessages';
+import { auth, db, googleProvider } from '@shared/firebase';
+import { TIMINGS, TIME, DEFAULTS, DEFAULT_CATEGORIES, DEFAULT_QUICK_ACTIONS, STORAGE_KEYS } from '@shared/constants';
+import { formatTimeAgo, formatHeaderDate, toDatetimeLocal, isToday, isYesterday, isInCurrentWeek, isInCurrentMonth, isInCurrentYear, cleanDate } from '@shared/utils/dateUtils';
+import { getStoredNotes, saveStoredNotes, getStoredCategories, saveStoredCategories, getStoredQuickActions, saveStoredQuickActions, getLastSyncTime, saveLastSyncTime, getAppSettings, saveAppSettings, getRememberMe, getRememberedEmail, saveRememberMe } from '@shared/utils/storageUtils';
+import { sanitizeCategoryName, sanitizeQuickActionText, sanitizeNoteContent } from '@shared/utils/validationUtils';
+import { ERROR_MESSAGES, getAuthErrorMessage, getSuccessMessage } from '@shared/utils/errorMessages';
 import { 
   signInWithPopup, 
   signOut, 
@@ -46,7 +38,9 @@ import {
   getDoc,
   updateDoc,
   serverTimestamp, 
-  writeBatch
+  writeBatch,
+  query,
+  limit
 } from 'firebase/firestore';
 import { getDocs } from 'firebase/firestore';
  
@@ -163,8 +157,13 @@ const App: React.FC = () => {
   const [isFirebaseReady, setIsFirebaseReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [isInitialDataLoading, setIsInitialDataLoading] = useState(true);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isOnline, setIsOnline] = useState(true); // Start with true, will be checked
   const [showBackOnlineBanner, setShowBackOnlineBanner] = useState(false);
+
+
+  // More reliable online detection using Firebase connectivity
+
+  // Update online status with reliable check
 
   const [appLoadingMessage, setAppLoadingMessage] = useState<string | null>(null);
   const [notes, setNotes] = useState<Note[]>(() => {
@@ -298,9 +297,15 @@ const App: React.FC = () => {
   };
 
   const removeToast = (id: string) => {
-    setToasts(prev => prev.map(t => t.id === id ? { ...t, isClosing: true } : t));
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 300);
-  }
+    setToasts(prev => {
+      const updated = prev.map(t => t.id === id ? { ...t, isClosing: true } : t);
+      // Filter out after animation delay
+      setTimeout(() => {
+        setToasts(latestPrev => latestPrev.filter(t => t.id !== id));
+      }, 300);
+      return updated;
+    });
+  };
 
   const formatTimeAgo = (timestamp: number | null): string => {
     if (!timestamp) return 'never';
@@ -323,13 +328,16 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!auth) {
       console.warn("Auth service not available (Local Mode)");
+      setIsFirebaseReady(true); // Set ready even in local mode
       return;
     }
 
+    // Set default persistence to local storage for session persistence
+    setPersistence(auth, browserLocalPersistence).catch(console.error);
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setIsFirebaseReady(true);
-      if (!currentUser) setUserRole('user'); // Reset role on logout
+      setIsFirebaseReady(true); // Firebase is ready once auth state is determined
+      setUser(currentUser); // CRITICAL: Set the user state!
       
       if (!currentUser) {
         setIsInitialDataLoading(false);
@@ -362,33 +370,6 @@ const App: React.FC = () => {
 
     const userDocRef = doc(db, 'users', user.uid);
 
-    const updateUserProfile = async () => {
-      try {
-        const docSnap = await getDoc(userDocRef);
-        if (docSnap.exists()) {
-          // User exists, just update last login time
-          await setDoc(userDocRef, {
-            lastLogin: new Date(user.metadata.lastSignInTime || Date.now())
-          }, { merge: true });
-        } else {
-          // New user, create profile
-          await setDoc(userDocRef, {
-            uid: user.uid, 
-            displayName: user.displayName || user.email?.split('@')[0], 
-            email: user.email, 
-            role: 'user', 
-            status: 'active', 
-            createdAt: serverTimestamp(), 
-            lastLogin: new Date(user.metadata.lastSignInTime || Date.now())
-          });
-        }
-      } catch (error) {
-        console.error('Error updating user profile:', error);
-        // Silently fail - user can still use the app
-      }
-    };
-
-    updateUserProfile();
   }, [user]);
 
   // Migration: remove any previously stored raw password key if present
@@ -401,16 +382,29 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!user || !db) return; 
-
+    if (!user || !db) return;
+    
     const notesRef = collection(db, `users/${user.uid}/notes`);
     const notesUnsub = onSnapshot(notesRef, (snapshot) => {
-      const cloudNotes = snapshot.docs.map(doc => doc.data() as Note);
-      // Update state and save to localStorage for offline use
-      setNotes(cloudNotes);
-      try {
-        localStorage.setItem('qn_notes', JSON.stringify(cloudNotes));
-      } catch (e) { console.error('Failed to save notes to localStorage', e); }
+      const cloudNotes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as Note, synced: true }));
+      // Merge with local notes to preserve sync status
+      setNotes(prevNotes => {
+        const mergedNotes = cloudNotes.map(cloudNote => {
+          const localNote = prevNotes.find(n => n.id === cloudNote.id);
+          return localNote ? { ...cloudNote, synced: true } : cloudNote;
+        });
+        const localOnlyNotes = prevNotes.filter(localNote =>
+          !cloudNotes.some(cloudNote => cloudNote.id === localNote.id)
+        );
+        const finalNotes = [...mergedNotes, ...localOnlyNotes];
+
+        // Update localStorage
+        try {
+          localStorage.setItem('qn_notes', JSON.stringify(finalNotes));
+        } catch (e) { console.error('Failed to save notes to localStorage', e); }
+
+        return finalNotes;
+      });
 
       // Ensure loader is visible for at least 5 seconds
       if (loadingStartTime.current) {
@@ -432,7 +426,7 @@ const App: React.FC = () => {
 
     const catsRef = collection(db, `users/${user.uid}/categories`);
     const catsUnsub = onSnapshot(catsRef, (snapshot) => {
-      const cloudCats = snapshot.docs.map(doc => doc.data() as Category);
+      const cloudCats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
       if (cloudCats.length > 0) {
         // Update state and save to localStorage
         setCategories(cloudCats);
@@ -444,7 +438,7 @@ const App: React.FC = () => {
 
     const qaRef = collection(db, `users/${user.uid}/quickActions`);
     const qaUnsub = onSnapshot(qaRef, (snapshot) => {
-      const cloudQA = snapshot.docs.map(doc => doc.data() as QuickAction);
+      const cloudQA = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as QuickAction));
       // Update state and save to localStorage
       setQuickActions(cloudQA);
       try {
@@ -521,12 +515,22 @@ const App: React.FC = () => {
         setIsMenuOpen(false);
       }
     };
-    const handleOnlineStatus = () => setIsOnline(navigator.onLine);
+    const updateOnlineStatus = () => {
+      const online = navigator.onLine;
+      setIsOnline(online);
+      if (!online) {
+        setShowBackOnlineBanner(false);
+      }
+    };
+    const handleOnlineStatus = () => updateOnlineStatus();
 
     window.addEventListener('scroll', handleScroll);
     document.addEventListener('mousedown', handleClickOutside);
     window.addEventListener('online', handleOnlineStatus);
     window.addEventListener('offline', handleOnlineStatus);
+
+    // Initial online check
+    updateOnlineStatus();
 
     return () => {
       window.removeEventListener('scroll', handleScroll);
@@ -536,23 +540,7 @@ const App: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    // Check if we just came back online from an offline state
-    if (isOnline && !prevIsOnline.current) {
-      setShowBackOnlineBanner(true);
-      syncOfflineChanges(); // Automatically sync when connection is restored
-
-      const timer = setTimeout(() => {
-        setShowBackOnlineBanner(false);
-      }, 3000); // Hide the banner after 3 seconds
-
-      return () => clearTimeout(timer);
-    }
-    // Update the previous value for the next render
-    prevIsOnline.current = isOnline;
-  }, [isOnline]);
-
-  const syncOfflineChanges = async () => {
+  const syncOfflineChanges = useCallback(async () => {
     if (!user || !db || !isOnline) return;
 
     showToast('Syncing offline changes...', 'info');
@@ -625,8 +613,8 @@ const App: React.FC = () => {
           const { synced, ...noteToSave } = localNote;
           batch.set(doc(db, `users/${user.uid}/notes`, localNote.id), noteToSave);
           hasChanges = true;
-        } else if (cloudNote && localNote.timestamp > cloudNote.timestamp) {
-          // Local note is newer, update the cloud
+        } else if (cloudNote && (localNote.timestamp > cloudNote.timestamp || localNote.synced === false)) {
+          // Local note is newer or unsynced, update the cloud
           const { synced, ...noteToSave } = localNote;
           batch.set(doc(db, `users/${user.uid}/notes`, localNote.id), noteToSave, { merge: true });
           hasChanges = true;
@@ -679,7 +667,23 @@ const App: React.FC = () => {
       setSyncStatus('idle');
       setLastSyncTime(Date.now());
     }
-  };
+  }, [user, db, isOnline]);
+
+  useEffect(() => {
+    // Check if we just came back online from an offline state
+    if (isOnline && !prevIsOnline.current) {
+      setShowBackOnlineBanner(true);
+      syncOfflineChanges(); // Automatically sync when connection is restored
+
+      const timer = setTimeout(() => {
+        setShowBackOnlineBanner(false);
+      }, 3000); // Hide the banner after 3 seconds
+
+      return () => clearTimeout(timer);
+    }
+    // Update the previous value for the next render
+    prevIsOnline.current = isOnline;
+  }, [isOnline]);
 
   const handleGoogleLogin = async () => {
     if (!auth || !googleProvider) {
@@ -789,219 +793,11 @@ const App: React.FC = () => {
     }
   };
 
-  // Load global settings from Firestore (only when authenticated)
-  useEffect(() => {
-    // Only load settings if user is authenticated
-    if (!user || !db) {
-      setGlobalSettingsLoaded(true); // Mark as loaded even if not authenticated
-      return;
-    }
-
-    const loadGlobalSettings = async () => {
-      try {
-        const settingsDoc = await getDoc(doc(db, 'settings', 'global'));
-        if (settingsDoc.exists()) {
-          const data = settingsDoc.data();
-          setGlobalSettings({
-            maintenanceMode: data.maintenanceMode || false,
-            allowRegistration: data.allowRegistration !== false,
-            defaultTheme: (data.defaultTheme as keyof typeof THEMES) || 'default',
-          });
-        }
-      } catch (error) {
-        console.error('Error loading global settings:', error);
-      } finally {
-        setGlobalSettingsLoaded(true);
-      }
-    };
-
-    // Initial load
-    loadGlobalSettings();
-    
-    // Listen for changes
-    const unsubscribe = onSnapshot(doc(db, 'settings', 'global'), (doc) => {
-      if (doc.exists()) {
-        const data = doc.data();
-        setGlobalSettings({
-          maintenanceMode: data.maintenanceMode || false,
-          allowRegistration: data.allowRegistration !== false,
-          defaultTheme: (data.defaultTheme as keyof typeof THEMES) || 'default',
-        });
-      }
-    }, (error) => {
-      console.error('Error listening to global settings:', error);
-    });
-    
-    return unsubscribe;
-  }, [user, db]);
-
-  // keep localStorage in sync when rememberMe changes (remove credentials when turned off)
-  useEffect(() => {
-    try {
-      if (!rememberMe) {
-        localStorage.removeItem('qn_remember');
-        localStorage.removeItem('qn_remember_email');
-      } else {
-        localStorage.setItem('qn_remember', 'true');
-      }
-    } catch (e) {}
-  }, [rememberMe]);
-
-  const handleForgotPassword = async () => {
-    if (!auth) {
-        showToast("Firebase keys missing", "error");
-        return;
-    }
-    if (!authEmail) {
-      showToast("Please enter your email first", "error");
-      return;
-    }
-    try {
-      await sendPasswordResetEmail(auth, authEmail);
-      showToast("Password reset email sent!");
-    } catch (error) {
-      showToast("Failed to send reset email", "error");
-    }
-  };
-
-  const handleLogout = async () => {
-    if (!auth) return;
-    try {
-      // Start the timer and show the full-screen loader for sign out
-      loadingStartTime.current = Date.now();
-      setAppLoadingMessage("Signing out");
-      setIsMenuOpen(false);
-      await signOut(auth);
-      setUser(null);
-
-      // Ensure sign-out animation is visible for a minimum duration
-      const elapsedTime = Date.now() - (loadingStartTime.current || Date.now());
-      const remainingTime = 1500 - elapsedTime; // A shorter duration for sign-out feels better
-      if (remainingTime > 0) {
-        setTimeout(() => setAppLoadingMessage(null), remainingTime);
-      } else {
-        setAppLoadingMessage(null);
-      }
-    } catch (error) {
-      showToast("Logout failed", "error");
-    }
-  };
-
-  const handleSaveSettings = async () => {
-    const finalAppName = appName.trim() || DEFAULTS.APP_NAME;
-    const finalAppSubtitle = appSubtitle.trim() || DEFAULTS.APP_SUBTITLE;
-
-    setAppName(finalAppName);
-    setAppSubtitle(finalAppSubtitle);
-    
-    // Save to localStorage once for immediate offline persistence
-    const settingsUpdatedTime = Date.now();
-    saveAppSettings({
-      appName: finalAppName,
-      appSubtitle: finalAppSubtitle,
-      appTheme: appTheme,
-      darkMode: darkMode
-    });
-    localStorage.setItem(STORAGE_KEYS.SETTINGS_UPDATED, settingsUpdatedTime.toString());
-
-    if (user && db && isOnline) {
-      setSyncStatus('syncing');
-      try {
-        await setDoc(doc(db, `users/${user.uid}/settings/general`), {
-          appName: finalAppName,
-          appSubtitle: finalAppSubtitle,
-          appTheme,
-          darkMode,
-          lastUpdated: settingsUpdatedTime
-        }, { merge: true });
-        setSyncStatus('idle');
-        setLastSyncTime(settingsUpdatedTime);
-      } catch (e) {
-        setSyncStatus('error');
-        showToast(ERROR_MESSAGES.SETTINGS.SAVE_FAILED, 'error');
-      }
-    }
-    setShowSettings(false);
-    showToast(getSuccessMessage('settings-saved'));
-  };
-
-  const toggleDarkMode = () => {
-    const newMode = !darkMode;
-    setDarkMode(newMode);
-
-    // Update localStorage immediately for offline persistence and sync detection
-    const settingsUpdatedTime = Date.now();
-    localStorage.theme = newMode ? 'dark' : 'light'; // Update the theme in localStorage
-    localStorage.setItem(STORAGE_KEYS.SETTINGS_UPDATED, settingsUpdatedTime.toString()); // Mark settings as updated
-
-    if (user && db && isOnline) { // Only attempt Firestore update if online
-        setDoc(doc(db, `users/${user.uid}/settings/general`), { darkMode: newMode, lastUpdated: settingsUpdatedTime }, { merge: true })
-            .catch((e) => console.error("Failed to sync theme preference:", e));
-    }
-  };
-
-  const updateUserLastUpdate = async () => {
-    if (user && db && isOnline) {
-      try {
-        await updateDoc(doc(db, 'users', user.uid), {
-          lastUpdate: serverTimestamp()
-        });
-      } catch (e) {
-        console.error("Failed to update user lastUpdate:", e);
-      }
-    }
-  };
-
-  const handleAddNote = async (content: string) => {
-    if (!content.trim()) {
-      showToast('Please enter some text', 'error');
-      return;
-    }
-    
-    const categoryId = currentCategory === 'all' ? 'general' : currentCategory;
-    
-    const newNote: Note = {
-      id: generateId(),
-      content,
-      categoryId,
-      timestamp: Date.now(),
-      deletedAt: null,
-      synced: false
-    };
-    
-    // Optimistic update: Update local state and storage immediately
-    setNotes(prev => {
-      const updated = [newNote, ...prev];
-      try {
-        localStorage.setItem('qn_notes', JSON.stringify(updated));
-      } catch (e) { console.error('Failed to save notes to localStorage', e); }
-      return updated;
-    });
-
-    // Reset UI immediately
-    setInputValue('');
-    if (showMobileAdd) setShowMobileAdd(false);
-    showToast('Note added');
-
-    // Save to cloud in background (fire and forget)
-    if (user && db && isOnline) {
-      (async () => {
-        try {
-          const { synced, ...noteToSave } = newNote;
-          await setDoc(doc(db, `users/${user.uid}/notes`, newNote.id), noteToSave);
-          await updateUserLastUpdate();
-          setLastSyncTime(Date.now());
-          // Mark as synced in UI
-          setNotes(prev => prev.map(n => n.id === newNote.id ? { ...n, synced: true } : n));
-        } catch (e) {
-          console.error("Failed to save note to cloud", e);
-          showToast('Failed to save to cloud', 'error');
-        }
-      })();
-    }
-  };
-
   const handleUpdateNote = async (id: string, content: string, categoryId: string, timestamp: number, silent: boolean = false) => {
+    if (!id) {
+      console.error("handleUpdateNote called with undefined id");
+      return;
+    }
     const updatedTimestamp = timestamp || Date.now();
 
     // Optimistic UI update
@@ -1012,55 +808,29 @@ const App: React.FC = () => {
       } catch (e) { console.error('Failed to save notes to localStorage', e); }
       return updatedNotes;
     });
-    
+
     // Background save
     if (user && db && isOnline) {
       (async () => {
         try {
           await setDoc(doc(db, `users/${user.uid}/notes`, id), { content, categoryId, timestamp: updatedTimestamp }, { merge: true });
-          await updateUserLastUpdate();
-          if (!silent) setLastSyncTime(Date.now());
-          // Mark as synced in UI
-          setNotes(prev => prev.map(n => n.id === id ? { ...n, synced: true } : n));
+          // Update user's last activity timestamp
+          await setDoc(doc(db, `users/${user.uid}`), { 
+            lastUpdate: new Date().toISOString() 
+          }, { merge: true });
         } catch (e) {
-          console.error("Failed to update note in cloud", e);
+          console.error("Failed to sync note update to cloud", e);
           if (!silent) showToast('Update failed to sync', 'error');
         }
       })();
-    }
-  };
-
-  const handleDeleteNote = async () => {
-    if (!confirmDeleteNoteId) return;
-
-    if (isOnline && user && db) {
-      // If online, delete directly from Firestore
-      const noteIdToDelete = confirmDeleteNoteId;
-      try {
-        setSyncStatus('syncing');
-        await deleteDoc(doc(db, `users/${user.uid}/notes`, noteIdToDelete));
-        await updateUserLastUpdate();
-        setSyncStatus('idle');
-        setLastSyncTime(Date.now());
-        showToast('Note deleted');
-      } catch (e) {
-        showToast('Delete failed', 'error');
-        setSyncStatus('error');
-      }
     } else {
-      const now = Date.now();
-      setNotes(prev => {
-        const updatedNotes = prev.map(n => n.id === confirmDeleteNoteId ? { ...n, deletedAt: now } : n);
-        localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
-        return updatedNotes;
-      });
-      showToast('Note will be deleted when back online');
+      // Offline mode - note will be synced when connection is restored
+      console.debug('Note update saved locally - will sync when online');
+      if (!silent) showToast('Note saved locally - will sync when online', 'info');
     }
-
-    setConfirmDeleteNoteId(null);
   };
 
-  const handleToggleNoteSelection = (id: string) => {
+  const handleSelectNote = useCallback((id: string) => {
     setSelectedNoteIds(prev => {
       const newSet = new Set(prev);
       if (newSet.has(id)) {
@@ -1070,6 +840,175 @@ const App: React.FC = () => {
       }
       return newSet;
     });
+  }, []);
+
+  const handleToggleNoteSelection = useCallback((id: string) => {
+    handleSelectNote(id);
+  }, [handleSelectNote]);
+
+  const handleAddNote = useCallback((content: string) => {
+    if (!content.trim()) return;
+    
+    const newNote: Note = {
+      id: generateId(),
+      content: sanitizeNoteContent(content),
+      categoryId: activeCategoryName === 'General' ? 'general' : activeCategoryName,
+      timestamp: Date.now(),
+      synced: false
+    };
+
+    // Optimistic UI update
+    setNotes(prev => {
+      const updatedNotes = [newNote, ...prev];
+      try {
+        localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
+      } catch (e) { console.error('Failed to save notes to localStorage', e); }
+      return updatedNotes;
+    });
+
+    // Background save
+    if (user && db && isOnline) {
+      (async () => {
+        try {
+          await setDoc(doc(db, `users/${user.uid}/notes`, newNote.id), {
+            content: newNote.content,
+            categoryId: newNote.categoryId,
+            timestamp: newNote.timestamp
+          }, { merge: true });
+          // Update user's last activity timestamp
+          await setDoc(doc(db, `users/${user.uid}`), { 
+            lastUpdate: new Date().toISOString() 
+          }, { merge: true });
+          // Mark as synced after successful save
+          setNotes(prev => {
+            const updatedNotes = prev.map(n => n.id === newNote.id ? { ...n, synced: true } : n);
+            try {
+              localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
+            } catch (e) { console.error('Failed to save notes to localStorage', e); }
+            return updatedNotes;
+          });
+          showToast('Note added successfully', 'success');
+        } catch (e) {
+          console.error("Failed to sync note to cloud", e);
+          showToast('Failed to add note', 'error');
+        }
+      })();
+    }
+    
+    // Clear input
+    setInputValue('');
+    setShowMobileAdd(false);
+  }, [user, db, isOnline, currentCategory]);
+
+  const handleDeleteNote = useCallback(async () => {
+    if (!confirmDeleteNoteId) return;
+    
+    if (isOnline && user && db) {
+      setSyncStatus('syncing');
+      try {
+        await deleteDoc(doc(db, `users/${user.uid}/notes`, confirmDeleteNoteId));
+        // Update user's last activity timestamp
+        await setDoc(doc(db, `users/${user.uid}`), { 
+          lastUpdate: new Date().toISOString() 
+        }, { merge: true });
+        setNotes(prev => {
+          const updatedNotes = prev.filter(n => n.id !== confirmDeleteNoteId);
+          try {
+            localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
+          } catch (e) { console.error('Failed to save notes to localStorage', e); }
+          return updatedNotes;
+        });
+        showToast('Note deleted successfully', 'success');
+      } catch (e) {
+        console.error("Failed to delete note from cloud", e);
+        showToast('Failed to delete note', 'error');
+      } finally {
+        setSyncStatus('idle');
+      }
+    } else {
+      // Offline: mark as deleted locally
+      const now = Date.now();
+      setNotes(prev => {
+        const updatedNotes = prev.map(n => n.id === confirmDeleteNoteId ? { ...n, deletedAt: now } : n);
+        try {
+          localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
+        } catch (e) { console.error('Failed to save notes to localStorage', e); }
+        return updatedNotes;
+      });
+      showToast('Note marked for deletion (will sync when online)', 'info');
+    }
+    
+    setConfirmDeleteNoteId(null);
+  }, [user, db, isOnline, confirmDeleteNoteId]);
+
+  const toggleDarkMode = () => {
+    setDarkMode(prev => !prev);
+    const newMode = !darkMode ? 'dark' : 'light';
+    localStorage.theme = newMode;
+    if (newMode === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setUser(null);
+      setUserRole(null);
+      setNotes([]);
+      setCategories([]);
+      setQuickActions([]);
+      setSelectedNoteIds(new Set());
+      showToast('Logged out successfully', 'success');
+    } catch (e) {
+      console.error('Failed to logout', e);
+      showToast('Failed to logout', 'error');
+    }
+  };
+
+  const handleForgotPassword = async (email: string) => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      showToast('Password reset email sent!', 'success');
+    } catch (e: any) {
+      console.error('Failed to send password reset email', e);
+      showToast(getAuthErrorMessage(e.code), 'error');
+    }
+  };
+
+  const handleSaveSettings = async (settings: any) => {
+    try {
+      // Save to localStorage
+      const updatedSettings = { ...appTheme, ...settings };
+      saveAppSettings(updatedSettings);
+      setAppTheme(updatedSettings);
+      
+      // Save to Firestore if user is logged in
+      if (user && db) {
+        await setDoc(doc(db, `users/${user.uid}/settings/general`), {
+          appName,
+          appSubtitle,
+          appTheme: updatedSettings,
+          darkMode
+        }, { merge: true });
+      }
+      
+      // Apply theme changes
+      if (settings.primary || settings.primaryDark || settings.textOnPrimary || settings.bgPage) {
+        const root = document.documentElement;
+        root.style.setProperty('--color-primary', settings.primary || updatedSettings.primary);
+        root.style.setProperty('--color-primary-dark', settings.primaryDark || updatedSettings.primaryDark);
+        root.style.setProperty('--color-text-on-primary', settings.textOnPrimary || updatedSettings.textOnPrimary);
+        root.style.setProperty('--color-bg-page', settings.bgPage || updatedSettings.bgPage);
+      }
+      
+      showToast('Settings saved successfully', 'success');
+    } catch (e) {
+      console.error('Failed to save settings', e);
+      showToast('Failed to save settings', 'error');
+    }
   };
 
   const handleDeleteSelectedNotes = async () => {
@@ -1539,25 +1478,24 @@ const App: React.FC = () => {
     }
 
     return groupedNotes.map(({ dateKey, notesInGroup, groupDateTimestamp }, groupIdx) => {
+      const validNotes = notesInGroup.filter(note => note && note.id);
       return (
         <div key={dateKey} className="mb-8 bg-surface dark:bg-gray-800 rounded-2xl shadow-sm border border-borderLight dark:border-gray-700 overflow-hidden animate-slide-up" style={{ animationDelay: `${groupIdx * 50}ms` }}>
           <div className="bg-bgPage dark:bg-gray-900/50 px-5 py-4 border-b border-borderLight dark:border-gray-700 flex items-center justify-between">
-            <h3 className="font-bold text-textMain dark:text-gray-100 text-lg tracking-tight">
-              {new Date(groupDateTimestamp).toLocaleDateString('en-US', { 
-                weekday: 'long', 
-                month: 'long', 
-                day: 'numeric', 
-                year: 'numeric' 
-              })}
-            </h3>
-            <span className="bg-primary/20 dark:bg-indigo-900/50 text-textMain dark:text-indigo-300 text-xs font-bold px-3 py-1 rounded-full">
-              {notesInGroup.length} {notesInGroup.length === 1 ? 'Note' : 'Notes'}
+            <span 
+              className="text-xs font-bold uppercase tracking-wider text-textSecondary dark:text-gray-400"
+              style={{ color: 'var(--color-text-secondary, #6b7280)' }}
+            >
+              {formatHeaderDate(groupDateTimestamp)}
+            </span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              {validNotes.length} {validNotes.length === 1 ? 'note' : 'notes'}
             </span>
           </div>
           <div className="divide-y divide-borderLight dark:divide-gray-700">
-            {notesInGroup.map(note => (
+            {validNotes.map(note => (
               <NoteCard
-                key={note.id}
+                key={`${dateKey}-${note.id}`}
                 note={note}
                 categories={categories}
                 categoryColor={getCategoryColor(note.categoryId)}
@@ -1631,6 +1569,9 @@ const App: React.FC = () => {
               <h1 className={`font-extrabold tracking-tight transition-all duration-300 ${isScrolled && user ? 'text-xl' : 'text-3xl'}`}>{user ? appName : 'Quick Notes'}</h1>
               <div className={`flex items-center gap-2 transition-all duration-300 ${isScrolled && user ? 'h-0 opacity-0' : 'h-auto opacity-70'}`}>
                 <span className="text-textOnPrimary dark:text-gray-400 font-light text-sm">{user ? appSubtitle : 'Capture ideas instantly'}</span>
+                {user && (
+                  <></>
+                )}
               </div>
             </div>
           </div>
@@ -2434,7 +2375,7 @@ const App: React.FC = () => {
           {'Inspired by and for Chan Li ❤️'}
         </div>
         <div className="mt-2 text-gray-400 dark:text-gray-600 text-xs">
-          Version {import.meta.env.APP_VERSION}
+          Version 1.0.0.7
         </div>
       </footer>
 
@@ -2480,12 +2421,12 @@ const AppRoutes: React.FC = () => {
         <Route path="/" element={<App />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/not-authorized" element={<NotAuthorized />} />
-        <Route path="/admin" element={<AdminRoute user={user} userRole={userRole}><AdminDashboard /></AdminRoute>}>
-          <Route index element={<Navigate to="analytics" replace />} />
+        <Route path="/admin" element={<AdminRoute user={user} userRole={userRole}>
+          <Route index element={<AdminDashboard />} />
           <Route path="users" element={<UserList />} />
           <Route path="analytics" element={<AdminAnalytics />} />
           <Route path="settings" element={<AdminSettings />} />
-        </Route>
+        </AdminRoute>} />
       </Routes>
 
       {/* Maintenance Mode Overlay */}

@@ -1,10 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import AppRoutes from './App';
-import ErrorBoundary from './components/ErrorBoundary';
+import AppRoutes from './app/App';
+import ErrorBoundary from '@shared/components/ErrorBoundary';
 import './styles/index.css';
-import { InstallPWAProvider } from '@/InstallPWAContext';
+import { InstallPWAProvider } from '@shared/components/InstallPWAContext';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

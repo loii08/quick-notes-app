@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { db } from '@/firebase';
+import { db } from '@shared/firebase';
 import {
   collection, query, orderBy, doc, updateDoc, deleteDoc,
   limit, startAfter, getDocs,
@@ -7,10 +7,10 @@ import {
   DocumentData,
   Timestamp,
 } from 'firebase/firestore';
-import ConfirmationModal from './components/ConfirmationModal';
-import ToastContainer from './components/ToastContainer';
-import UserListSkeleton from './UserListSkeleton';
-import { ToastMessage, ToastType } from './types';
+import ConfirmationModal from '@shared/components/ConfirmationModal';
+import ToastContainer from '@shared/components/ToastContainer';
+import UserListSkeleton from '@shared/components/UserListSkeleton';
+import { ToastMessage, ToastType } from '@shared/types';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 
 export interface AppUser {

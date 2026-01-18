@@ -1,5 +1,5 @@
 import React from 'react';
-import { ToastMessage } from '../types';
+import { ToastMessage } from '@shared/types';
 import Toast from './Toast';
 
 interface ToastContainerProps {

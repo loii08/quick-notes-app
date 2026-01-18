@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes shimmer {
+  0% { background-position: -100% 0; }
+  100% { background-position: 100% 0; }
+}
+
+@keyframes bounce-high {
+  0%, 100% {
+    transform: translateY(-60%);
+    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+  }
+  50% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+}
+.animate-bounce-high {
+  animation: bounce-high 1s infinite;
+}
+.animate-juggle {
+  animation: juggle 1.2s infinite;
+}
+
+@keyframes juggle {
+  0%, 100% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+  50% {
+    transform: translateY(-100%);
+    animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+}
+
+:root {
+  --color-primary: #000000;
+  --color-primary-dark: #333333;
+  --color-text-on-primary: #FFFFFF;
+  --color-bg-page: #F5F5F5;
+  --color-surface: #FFFFFF;
+  --color-border: #B3B3B3;
+  --color-text: #2B2B2B;
+}
+
+html.dark {
+  --color-bg-page: #000000;
+  --color-surface: #121212;
+  --color-border: #333333;
+  --color-text: #F5F5F5;
+  --color-primary: #FFFFFF;
+  --color-primary-dark: #E5E5E5;
+  --color-text-on-primary: #000000;
+}
+
+body { background-color: var(--color-bg-page); color: var(--color-text); min-height: 100vh; -webkit-tap-highlight-color: transparent; transition: background-color 0.3s, color 0.3s; }
+
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.notes-grid { column-count: 1; column-gap: 1.5rem; }
+@media (min-width: 768px) { .notes-grid { column-count: 2; } }
+@media (min-width: 1024px) { .notes-grid { column-count: 3; } }
+
+.custom-loader { display: flex; gap: 12px; align-items: center; justify-content: center; }
+.dot { width: 16px; height: 16px; border-radius: 50%; animation: pulse 1.4s infinite ease-in-out both; }
+@keyframes pulse { 0%, 80%, 100% { transform: scale(0.5); opacity: 0.5; } 40% { transform: scale(1.0); opacity: 1; } }
+
+/* Custom Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background-color: rgba(128, 128, 128, 0.4); border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }

@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { ToastMessage } from '../types';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { ToastMessage } from '@shared/types';
 
 interface ToastProps {
   toast: ToastMessage;
@@ -71,13 +71,20 @@ const Toast: React.FC<ToastProps> = ({ toast, onRemove }) => {
   const [progress, setProgress] = useState(100);
   const [isPaused, setIsPaused] = useState(false);
 
+  const onRemoveRef = useRef(onRemove);
+  
+  // Update ref when onRemove changes
+  useEffect(() => {
+    onRemoveRef.current = onRemove;
+  }, [onRemove]);
+
   const handleRemove = useCallback(() => {
     setIsExiting(true);
     // Wait for exit animation to complete before removing
     setTimeout(() => {
-      onRemove(toast.id);
+      onRemoveRef.current(toast.id);
     }, 300);
-  }, [toast.id, onRemove]);
+  }, [toast.id]);
 
   const handleMouseEnter = () => setIsPaused(true);
   const handleMouseLeave = () => setIsPaused(false);
@@ -105,14 +112,14 @@ const Toast: React.FC<ToastProps> = ({ toast, onRemove }) => {
     }, intervalTime);
 
     return () => clearInterval(interval);
-  }, [toast.duration, isPaused, isExiting, handleRemove]);
+  }, [toast.duration, isPaused, isExiting]);
 
   // Handle manual close from parent
   useEffect(() => {
     if (toast.isClosing && !isExiting) {
       handleRemove();
     }
-  }, [toast.isClosing, isExiting, handleRemove]);
+  }, [toast.isClosing, isExiting]);
 
   // Animate in
   useEffect(() => {

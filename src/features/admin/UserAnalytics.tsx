@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { db, auth } from '@/firebase';
+import { db, auth } from '@shared/firebase';
 import { collection, getDocs, query, where, getCountFromServer } from 'firebase/firestore';
-import { useAuthStatus } from './useAuthStatus';
+import { useAuthStatus } from '@features/auth';
 
 interface AnalyticsData {
   totalNotes: number;
