@@ -157,6 +157,17 @@ const App: React.FC = () => {
   const [isFirebaseReady, setIsFirebaseReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'error'>('idle');
   const [isInitialDataLoading, setIsInitialDataLoading] = useState(true);
+
+  // Add a timeout to prevent infinite loading
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (isInitialDataLoading) {
+        setIsInitialDataLoading(false);
+      }
+    }, 3000); // 3 second timeout
+
+    return () => clearTimeout(timeout);
+  }, [isInitialDataLoading]);
   const [isOnline, setIsOnline] = useState(true); // Start with true, will be checked
   const [showBackOnlineBanner, setShowBackOnlineBanner] = useState(false);
 
@@ -406,12 +417,12 @@ const App: React.FC = () => {
         return finalNotes;
       });
 
-      // Ensure loader is visible for at least 5 seconds
+      // Ensure loader is visible for at least 1.5 seconds for smooth UX
       if (loadingStartTime.current) {
         // This logic is now only for fresh logins, not refreshes.
         if (appLoadingMessage) {
             const elapsedTime = Date.now() - loadingStartTime.current;
-            const remainingTime = 5000 - elapsedTime;
+            const remainingTime = 1500 - elapsedTime;
             if (remainingTime > 0) {
               setTimeout(() => setAppLoadingMessage(null), remainingTime);
             } else {
