@@ -8,9 +8,17 @@ import ToastContainer from '@shared/components/ToastContainer';
 import OnboardingModal from '@shared/components/OnboardingModal';
 import SkeletonLoader from '@shared/components/SkeletonLoader';
 import LandingPage from '@shared/components/LandingPage';
-import { LoginModal, SetPasswordModal, useAuthStatus } from '@features/auth';
+import LoginModal from '@shared/components/LoginModal';
 import AppLoader from '@shared/components/AppLoader';
-import { AdminDashboard, AdminAnalytics, AdminSettings, AdminRoute, UserList, UserAnalytics, NotAuthorized } from '@features/admin';
+import AdminAnalytics from '@features/admin/AdminAnalytics';
+import UserAnalytics from '@features/admin/UserAnalytics';
+import AdminSettings from '@features/admin/AdminSettings';
+import AdminRoute from '@features/admin/AdminRoute';
+import { useAuthStatus } from '@features/auth/useAuthStatus';
+import AdminDashboard from '@features/admin/AdminDashboard';
+import UserList from '@features/admin/UserList';
+import NotAuthorized from '@features/admin/NotAuthorized';
+import SetPasswordModal from '@features/auth/SetPasswordModal';
 
 import { auth, db, googleProvider } from '@shared/firebase';
 import { TIMINGS, TIME, DEFAULTS, DEFAULT_CATEGORIES, DEFAULT_QUICK_ACTIONS, STORAGE_KEYS } from '@shared/constants';
@@ -20,34 +28,44 @@ import { sanitizeCategoryName, sanitizeQuickActionText, sanitizeNoteContent } fr
 import { ERROR_MESSAGES, getAuthErrorMessage, getSuccessMessage } from '@shared/utils/errorMessages';
 import { 
   signInWithPopup, 
-  signOut, 
-  onAuthStateChanged, 
-  User,
+  signOut,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
-  updateProfile
+  updatePassword,
+  onAuthStateChanged,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence
 } from 'firebase/auth';
-import { setPersistence, browserLocalPersistence, browserSessionPersistence } from 'firebase/auth';
 import { 
   collection, 
-  onSnapshot, 
   doc, 
-  setDoc, 
-  deleteDoc,
-  getDoc,
-  updateDoc,
-  serverTimestamp, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  getDoc, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy, 
+  limit,
+  onSnapshot,
   writeBatch,
-  query,
-  limit
+  getDocsFromCache,
+  setDoc,
+  initializeFirestore,
+  persistentLocalCache,
+  serverTimestamp
 } from 'firebase/firestore';
-import { getDocs } from 'firebase/firestore';
- 
+
+// Get version from Vite environment variable (defined in vite.config.ts)
+const APP_VERSION = import.meta.env.APP_VERSION;
+
 const generateId = () => Math.random().toString(36).substr(2, 9);
 const getCategoryColor = (str: string) => {
   let hash = 0;
-  for (let i = 0; i < str.length; i++) {
+  for (let i = 0; i <str.length; i++) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash);
   }
   const hue = Math.abs(hash % 360);
@@ -2386,7 +2404,7 @@ const App: React.FC = () => {
           {'Inspired by and for Chan Li ❤️'}
         </div>
         <div className="mt-2 text-gray-400 dark:text-gray-600 text-xs">
-          Version 1.0.0.7
+          Version {APP_VERSION}
         </div>
       </footer>
 
