@@ -46,6 +46,7 @@ export const STORAGE_KEYS = {
   CATEGORIES: 'qn_cats',
   QUICK_ACTIONS: 'qn_qa',
   UNITS: 'qn_units',
+  RELATED_UNITS: 'qn_related_units',
   LAST_SYNC: 'qn_last_sync',
   REMEMBER_ME: 'qn_remember',
   REMEMBER_EMAIL: 'qn_remember_email',

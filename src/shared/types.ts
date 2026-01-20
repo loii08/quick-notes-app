@@ -9,6 +9,8 @@ export interface Note {
   timestamp: number;
   deletedAt: number | null;
   synced?: boolean;
+  quantity?: number;
+  unitId?: string;
 }
 
 export type CategoryType = 'text' | 'quantifiable';
@@ -17,6 +19,7 @@ export interface Category {
   id: string;
   name: string;
   category_type: CategoryType;
+  defaultUnitId?: string; // Default unit for quantifiable categories
 }
 
 export interface UnitOfMeasure {
@@ -24,14 +27,23 @@ export interface UnitOfMeasure {
   unit_name: string;
   abbreviation: string;
   description?: string;
+  isBaseUnit?: boolean; // New field to identify base units
+}
+
+export interface RelatedUnit {
+  id: string;
+  baseUnitId: string;
+  relatedUnitId: string;
+  conversionFactor: number; // How many related units = 1 base unit
 }
 
 export interface QuickAction {
   id: string;
   text: string;
   categoryId: string;
-  quantity?: number;
-  unitId?: string;
+  quantity?: number; // Always stored in base units
+  unitId?: string; // The selected unit for display
+  baseQuantity?: number; // Quantity in base units for conversion
   deletedAt?: number | null;
 }
 
@@ -41,7 +53,8 @@ export interface ToastMessage {
   id: string;
   message: string;
   type: ToastType;
-  isClosing: boolean;
+  timestamp: number;
+  isClosing?: boolean;
 }
 
 export type ToastType = 'success' | 'error' | 'info';

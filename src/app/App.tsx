@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Routes, Route, Link, useLocation, Outlet, Navigate } from 'react-router-dom';
-import { Note, Category, QuickAction, UnitOfMeasure, CategoryType, FilterMode, ToastMessage, ToastType } from '@shared/types';
+import { Note, Category, QuickAction, UnitOfMeasure, RelatedUnit, CategoryType, FilterMode, ToastMessage, ToastType } from '@shared/types';
 import Modal from '@shared/components/Modal';
 import ConfirmationModal from '@shared/components/ConfirmationModal';
 import NoteCard from '@features/notes/NoteCard';
@@ -20,6 +20,8 @@ import UserList from '@features/admin/UserList';
 import NotAuthorized from '@features/admin/NotAuthorized';
 import SetPasswordModal from '@features/auth/SetPasswordModal';
 import UnitsManager from '@features/admin/UnitsManager';
+import { useData } from '../hooks/useData';
+import { useNavigation } from '../hooks/useNavigation';
 
 import { auth, db, googleProvider } from '@shared/firebase';
 import { TIMINGS, TIME, DEFAULTS, DEFAULT_CATEGORIES, DEFAULT_QUICK_ACTIONS, STORAGE_KEYS } from '@shared/constants';
@@ -200,7 +202,8 @@ const App: React.FC = () => {
     if (typeof window === 'undefined') return [];
     try {
       const saved = localStorage.getItem('qn_notes');
-      return saved ? JSON.parse(saved) : [];
+      const parsed = saved ? JSON.parse(saved) : [];
+      return parsed;
     } catch (e) { console.error('Failed to load notes', e); return []; }
   });
 
@@ -230,6 +233,21 @@ const App: React.FC = () => {
     } catch (e) { return []; }
   });
 
+  const [relatedUnits, setRelatedUnits] = useState<RelatedUnit[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const saved = localStorage.getItem('qn_related_units');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) { return []; }
+  });
+
+  const handleUnitsChange = (newUnits: UnitOfMeasure[]) => {
+    setUnits(newUnits);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('qn_units', JSON.stringify(newUnits));
+    }
+  };
+
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(() => {
     try {
       const saved = localStorage.getItem('qn_last_sync');
@@ -251,7 +269,7 @@ const App: React.FC = () => {
   });
 
   const [currentCategory, setCurrentCategory] = useState<string>('all');
-  const [filterMode, setFilterMode] = useState<FilterMode>('today');
+  const [filterMode, setFilterMode] = useState<FilterMode>('all');
   const [customDate, setCustomDate] = useState<string>('');
   const [inputValue, setInputValue] = useState('');
   const [isScrolled, setIsScrolled] = useState(false);
@@ -482,7 +500,17 @@ const App: React.FC = () => {
         const creationTime = new Date(currentUser.metadata.creationTime || 0).getTime();
         const fiveSecondsAgo = Date.now() - 5000;
 
+        // Clear localStorage on fresh login to prevent data mixing
         if (lastSignInTime > fiveSecondsAgo) {
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('qn_notes');
+            localStorage.removeItem('qn_cats');
+            localStorage.removeItem('qn_qa');
+            localStorage.removeItem('qn_units');
+            localStorage.removeItem('qn_related_units');
+            localStorage.removeItem('qn_last_sync');
+          }
+          
           const isNewUser = (lastSignInTime - creationTime) < 5000;
           const name = currentUser.displayName?.split(' ')[0] || currentUser.email?.split('@')[0] || 'User';
 
@@ -490,7 +518,6 @@ const App: React.FC = () => {
             setShowOnboarding(true);
           } else {
             showToast(`Welcome back, ${name}!`);
-            setFilterMode('today');
           }
         }
       }
@@ -521,16 +548,21 @@ const App: React.FC = () => {
     const notesRef = collection(db, `users/${user.uid}/notes`);
     const notesUnsub = onSnapshot(notesRef, (snapshot) => {
       const cloudNotes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as Note, synced: true }));
-      // Merge with local notes to preserve sync status
+      
+      // Merge with cloud notes, removing notes that were deleted from other devices
       setNotes(prevNotes => {
-        const mergedNotes = cloudNotes.map(cloudNote => {
+        // Keep notes that exist in cloud (updated with cloud data)
+        const updatedNotes = cloudNotes.map(cloudNote => {
           const localNote = prevNotes.find(n => n.id === cloudNote.id);
           return localNote ? { ...cloudNote, synced: true } : cloudNote;
         });
+        
+        // Add local-only notes (not yet synced to cloud)
         const localOnlyNotes = prevNotes.filter(localNote =>
-          !cloudNotes.some(cloudNote => cloudNote.id === localNote.id)
+          !cloudNotes.some(cloudNote => cloudNote.id === localNote.id) && !localNote.synced
         );
-        const finalNotes = [...mergedNotes, ...localOnlyNotes];
+        
+        const finalNotes = [...updatedNotes, ...localOnlyNotes];
 
         // Update localStorage
         try {
@@ -997,6 +1029,11 @@ const App: React.FC = () => {
     // Use currentCategory, default to 'general' if 'all' is selected
     const categoryId = currentCategory === 'all' ? 'general' : currentCategory;
     
+    // If creating a note with 'general' category while 'all' is selected, switch filter to 'general'
+    if (currentCategory === 'all' && categoryId === 'general') {
+      setCurrentCategory('general');
+    }
+    
     const newNote: Note = {
       id: generateId(),
       content: sanitizeNoteContent(content),
@@ -1109,7 +1146,20 @@ const App: React.FC = () => {
       setNotes([]);
       setCategories([]);
       setQuickActions([]);
+      setUnits([]);
+      setRelatedUnits([]);
       setSelectedNoteIds(new Set());
+      
+      // Clear localStorage to prevent data leakage between users
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('qn_notes');
+        localStorage.removeItem('qn_cats');
+        localStorage.removeItem('qn_qa');
+        localStorage.removeItem('qn_units');
+        localStorage.removeItem('qn_related_units');
+        localStorage.removeItem('qn_last_sync');
+      }
+      
       showToast('Logged out successfully', 'success');
     } catch (e) {
       console.error('Failed to logout', e);
@@ -1515,6 +1565,13 @@ const App: React.FC = () => {
         batch.delete(doc.ref);
       });
       await batch.commit();
+      
+      // Immediately update local state for instant UI feedback
+      setNotes([]);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('qn_notes');
+      }
+      
       showToast('All notes have been successfully deleted.');
     } catch (error) {
       console.error('Failed to clear all notes:', error);
@@ -1570,7 +1627,9 @@ const App: React.FC = () => {
     return notes.filter(note => {
       if (note.deletedAt && selectedNoteIds.size === 0) return false; // Hide soft-deleted notes unless in selection mode
       if (note.deletedAt) return false; // Exclude notes marked for deletion
-      if (currentCategory !== 'all' && note.categoryId !== currentCategory) return false;      
+      
+      const categoryMatch = currentCategory === 'all' || note.categoryId === currentCategory;
+      if (!categoryMatch) return false;      
       const noteDate = new Date(note.timestamp);
       const today = new Date();
       const cleanDate = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
@@ -1727,10 +1786,7 @@ const App: React.FC = () => {
               <h1 className={`font-extrabold tracking-tight transition-all duration-300 ${isScrolled && user ? 'text-xl' : 'text-3xl'}`}>{user ? appName : 'Quick Notes'}</h1>
               <div className={`flex items-center gap-2 transition-all duration-300 ${isScrolled && user ? 'h-0 opacity-0' : 'h-auto opacity-70'}`}>
                 <span className="text-textOnPrimary dark:text-gray-400 font-light text-sm">{user ? appSubtitle : 'Capture ideas instantly'}</span>
-                {user && (
-                  <></>
-                )}
-              </div>
+                              </div>
             </div>
           </div>
           
@@ -1988,7 +2044,7 @@ const App: React.FC = () => {
 
               <div className="flex items-center gap-2 mb-6 w-full">
                 <button
-                   onClick={() => { setFilterMode('all'); setCustomDate(''); }}
+                   onClick={() => { setFilterMode('all'); setCurrentCategory('all'); setCustomDate(''); }}
                    className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-bold border capitalize transition-all whitespace-nowrap ${filterMode === 'all' ? 'bg-primary text-textOnPrimary border-primary shadow-sm' : 'bg-white border-borderLight text-gray-500 hover:bg-gray-50'}`}
                  >
                    All Time
@@ -2745,6 +2801,10 @@ const App: React.FC = () => {
           <UnitsManager
             isOpen={showUnitsManager}
             onClose={() => setShowUnitsManager(false)}
+            units={units}
+            relatedUnits={relatedUnits}
+            onUnitsChange={handleUnitsChange}
+            onRelatedUnitsChange={setRelatedUnits}
           />
         </>
       )}

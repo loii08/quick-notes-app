@@ -3,7 +3,7 @@
  */
 
 import { STORAGE_KEYS } from '../constants';
-import type { Note, Category, QuickAction, UnitOfMeasure } from '../types';
+import type { Note, Category, QuickAction, UnitOfMeasure, RelatedUnit } from '../types';
 
 /**
  * Safely gets an item from localStorage
@@ -220,6 +220,23 @@ export const getStoredUnits = (): UnitOfMeasure[] => {
  */
 export const saveStoredUnits = (units: UnitOfMeasure[]): boolean => {
   return setStorageItem(STORAGE_KEYS.UNITS, units);
+};
+
+/**
+ * Gets related units from localStorage
+ * @returns Array of related units
+ */
+export const getStoredRelatedUnits = (): RelatedUnit[] => {
+  return getStorageItem<RelatedUnit[]>(STORAGE_KEYS.RELATED_UNITS, []);
+};
+
+/**
+ * Saves related units to localStorage
+ * @param relatedUnits - Related units to save
+ * @returns true if successful
+ */
+export const saveStoredRelatedUnits = (relatedUnits: RelatedUnit[]): boolean => {
+  return setStorageItem(STORAGE_KEYS.RELATED_UNITS, relatedUnits);
 };
 
 /**

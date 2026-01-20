@@ -174,6 +174,41 @@ const showToast = (message: string, type: ToastType) => {
 {loading ? <SkeletonLoader /> : <NoteList notes={notes} />}
 ```
 
+## 🐛 Debugging & Current Issues
+
+### Active Debugging Setup
+When investigating data retrieval issues, the following debugging is in place:
+
+**Console Logs to Check:**
+- `"Auth state changed:"` - Tracks user authentication state
+- `"User UID:"` - Shows the authenticated user ID
+- `"User email:"` - Shows the authenticated user email
+- `"Initial notes loaded from localStorage: [X] notes"` - Initial state load
+- `"Firestore snapshot received: [X] notes for user: [UID]"` - Firestore query results
+- `"Cloud notes processed: [X]"` - Processed cloud data
+- `"Updating notes from [X] to [Y]"` - State updates
+- `"Final notes count after merge: [Z]"` - Final result
+
+### Current Issue Investigation (Jan 19, 2026)
+**Problem:** User notes not displaying in UI
+
+**Symptoms:**
+- Firestore returns 0 notes for malformed user ID: `BdoAayDE99ers5CrqsXFV8aWRR03`
+- Console shows multiple state updates but final count remains 0
+
+**Root Cause:** User authentication state corruption - UID is malformed
+
+**Debugging Added:**
+- Enhanced auth state logging in `App.tsx` lines 492-494
+- Enhanced Firestore query logging in `App.tsx` lines 551-553
+- Enhanced notes state tracking in `App.tsx` lines 206-207
+
+**Next Steps:**
+1. Check browser console for auth state logs
+2. Verify user UID format and validity
+3. Check Firebase authentication flow
+4. Investigate if localStorage cleanup is affecting auth state
+
 ## 📱 PWA Features
 
 ### Service Worker
