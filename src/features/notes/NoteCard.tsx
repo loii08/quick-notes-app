@@ -15,6 +15,8 @@ interface NoteCardProps {
   isSelected: boolean;
   onToggleSelect: (id: string) => void;
   isSelectionActive: boolean;
+  onLongPress: (id: string) => void;
+  onPress: (id: string) => void;
 }
 
 const NoteCard: React.FC<NoteCardProps> = ({ 
@@ -29,7 +31,9 @@ const NoteCard: React.FC<NoteCardProps> = ({
   isOnline,
   isSelected,
   onToggleSelect,
-  isSelectionActive
+  isSelectionActive,
+  onLongPress,
+  onPress
 }) => {
   const [editContent, setEditContent] = useState(note.content);
   const [editCategoryId, setEditCategoryId] = useState(note.categoryId);
@@ -107,6 +111,53 @@ const NoteCard: React.FC<NoteCardProps> = ({
     onDelete(note.id);
   }, [onDelete, note.id]);
 
+  const handleCardPress = useCallback(() => {
+    if (isSelectionActive) {
+      onPress(note.id);
+    } else {
+      onActivate();
+    }
+  }, [isSelectionActive, onPress, onActivate]);
+
+  const handleCardLongPress = useCallback(() => {
+    onLongPress(note.id);
+  }, [onLongPress, note.id]);
+
+  const handleSelectClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleSelect(note.id);
+  }, [onToggleSelect, note.id]);
+
+  // Long press detection
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const longPressThreshold = 500; // 500ms for long press
+
+  const handleMouseDown = useCallback(() => {
+    longPressTimer.current = setTimeout(() => {
+      handleCardLongPress();
+    }, longPressThreshold);
+  }, [handleCardLongPress]);
+
+  const handleMouseUp = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const handleTouchStart = useCallback(() => {
+    longPressTimer.current = setTimeout(() => {
+      handleCardLongPress();
+    }, longPressThreshold);
+  }, [handleCardLongPress]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
   const handleSave = () => {
     if (!editContent.trim()) return;
     ignoreSaveRef.current = true;
@@ -140,17 +191,41 @@ const NoteCard: React.FC<NoteCardProps> = ({
 
   return (
     <div 
-      className={`w-full bg-white dark:bg-gray-800 transition-colors duration-200 border-l-4 ${isActive ? 'bg-indigo-50/20 dark:bg-indigo-900/20' : 'hover:bg-gray-50/50 dark:hover:bg-gray-700/50'}`}
+      className={`w-full bg-white dark:bg-gray-800 transition-colors duration-200 border-l-4 ${isActive ? 'bg-indigo-50/20 dark:bg-indigo-900/20' : 'hover:bg-gray-50/50 dark:hover:bg-gray-700/50'} ${isSelectionActive ? 'cursor-pointer' : ''}`}
       style={{ borderLeftColor: categoryColor }}
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onClick={handleCardPress}
     >
       <div className="px-5 py-4">
         <div className="flex justify-between items-center mb-1.5">
-          <span 
-            className="text-[11px] font-bold uppercase tracking-wider"
-            style={{ color: categoryColor }}
-          >
-            {categoryName}
-          </span>
+          <div className="flex items-center gap-3">
+            {isSelectionActive && (
+              <button
+                onClick={handleSelectClick}
+                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                  isSelected 
+                    ? 'bg-primary border-primary text-textOnPrimary' 
+                    : 'border-gray-300 dark:border-gray-600 hover:border-primary'
+                }`}
+              >
+                {isSelected && (
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+            )}
+            <span 
+              className="text-[11px] font-bold uppercase tracking-wider"
+              style={{ color: categoryColor }}
+            >
+              {categoryName}
+            </span>
+          </div>
           <div className="flex items-center gap-2">
             <div className="text-[11px] text-gray-400 dark:text-gray-500 font-medium tracking-wide flex flex-col items-end">
               {formatTimeAgo(note.timestamp)}
@@ -253,8 +328,11 @@ const NoteCard: React.FC<NoteCardProps> = ({
           </div>
         ) : (
           <div 
-            className="text-textMain dark:text-gray-200 text-[15px] leading-relaxed cursor-pointer whitespace-pre-wrap break-words"
-            onClick={onActivate}
+            className="text-textMain dark:text-gray-200 text-[15px] leading-relaxed whitespace-pre-wrap break-words"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCardPress();
+            }}
           >
             {note.content}
           </div>

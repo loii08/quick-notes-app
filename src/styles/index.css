@@ -119,3 +119,33 @@ body { background-color: var(--color-bg-page); color: var(--color-text); min-hei
     padding-bottom: max(0px, env(safe-area-inset-bottom));
   }
 }
+
+/* SweetAlert2 iOS safe area support */
+@supports (-webkit-touch-callout: none) {
+  .swal2-container {
+    padding-top: max(1.5rem, env(safe-area-inset-top)) !important;
+  }
+  
+  .swal2-popup {
+    margin-top: env(safe-area-inset-top, 0px);
+  }
+  
+  .swal2-toast {
+    margin-top: max(1.5rem, env(safe-area-inset-top)) !important;
+  }
+  
+  .swal2-modal {
+    padding-top: max(2rem, env(safe-area-inset-top)) !important;
+  }
+  
+  /* iOS-safe modal containers */
+  .swal2-container-ios-safe {
+    padding-top: max(2rem, env(safe-area-inset-top)) !important;
+    padding-bottom: max(2rem, env(safe-area-inset-bottom)) !important;
+  }
+  
+  .swal2-popup-ios-safe {
+    margin-top: env(safe-area-inset-top, 0px) !important;
+    margin-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+}

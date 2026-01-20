@@ -4,7 +4,8 @@ import { Note, Category, QuickAction, UnitOfMeasure, RelatedUnit, CategoryType, 
 import Modal from '@shared/components/Modal';
 import ConfirmationModal from '@shared/components/ConfirmationModal';
 import NoteCard from '@features/notes/NoteCard';
-import ToastContainer from '@shared/components/ToastContainer';
+import { showSweetAlert } from '@shared/utils/sweetAlertUtils';
+import Swal from 'sweetalert2';
 import OnboardingModal from '@shared/components/OnboardingModal';
 import SkeletonLoader from '@shared/components/SkeletonLoader';
 import LandingPage from '@shared/components/LandingPage';
@@ -437,6 +438,7 @@ const App: React.FC = () => {
   const [qaSortKey, setQaSortKey] = useState<'text' | 'category'>('text');
 
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -444,25 +446,19 @@ const App: React.FC = () => {
   const prevIsOnline = useRef(isOnline);
 
   const showToast = (message: string, type: ToastType = 'success') => {
-    const newToast: ToastMessage = { id: generateId(), message, type, isClosing: false };
-    setToasts(prev => [...prev, newToast]);
-
-    setTimeout(() => {
-      setToasts(prev => prev.map(t => t.id === newToast.id ? { ...t, isClosing: true } : t));
-      setTimeout(() => {
-        setToasts(prev => prev.filter(t => t.id !== newToast.id));
-      }, 300);
-    }, 3000);
-  };
-
-  const removeToast = (id: string) => {
-    setToasts(prev => {
-      const updated = prev.map(t => t.id === id ? { ...t, isClosing: true } : t);
-      // Filter out after animation delay
-      setTimeout(() => {
-        setToasts(latestPrev => latestPrev.filter(t => t.id !== id));
-      }, 300);
-      return updated;
+    const iconMap = {
+      success: 'success',
+      error: 'error', 
+      info: 'info'
+    } as const;
+    
+    Swal.fire({
+      icon: iconMap[type] || 'info',
+      title: message,
+      showConfirmButton: false,
+      timer: 3000,
+      position: 'top',
+      toast: true
     });
   };
 
@@ -1030,6 +1026,22 @@ const App: React.FC = () => {
     handleSelectNote(id);
   }, [handleSelectNote]);
 
+  const handleClearSelection = useCallback(() => {
+    setSelectedNoteIds(new Set());
+    setIsSelectionMode(false);
+  }, []);
+
+  const handleLongPress = useCallback((noteId: string) => {
+    setIsSelectionMode(true);
+    setSelectedNoteIds(new Set([noteId]));
+  }, []);
+
+  const handleNotePress = useCallback((noteId: string) => {
+    if (isSelectionMode) {
+      handleToggleNoteSelection(noteId);
+    }
+  }, [isSelectionMode, handleToggleNoteSelection]);
+
   const handleAddNote = useCallback((content: string) => {
     if (!content.trim()) return;
     
@@ -1241,6 +1253,21 @@ const App: React.FC = () => {
   const handleDeleteSelectedNotes = async () => {
     if (selectedNoteIds.size === 0) return;
 
+    const noteCount = selectedNoteIds.size;
+    const message = noteCount === 1 
+      ? 'Are you sure you want to delete this note?'
+      : `Are you sure you want to delete ${noteCount} selected notes?`;
+
+    // Show SweetAlert2 confirmation
+    const result = await showSweetAlert.delete(message, {
+      text: 'This action cannot be undone.',
+      confirmButtonText: `Delete ${noteCount} ${noteCount === 1 ? 'Note' : 'Notes'}`,
+      cancelButtonText: 'Cancel',
+      icon: 'warning'
+    });
+
+    if (!result.isConfirmed) return;
+
     if (isOnline && user && db) {
       setSyncStatus('syncing');
       const batch = writeBatch(db);
@@ -1248,8 +1275,12 @@ const App: React.FC = () => {
         batch.delete(doc(db, `users/${user.uid}/notes`, id));
       });
       await batch.commit();
-      setSyncStatus('idle');
-      setLastSyncTime(Date.now());
+      
+      // Update local state
+      setNotes(prev => prev.filter(n => !selectedNoteIds.has(n.id)));
+      try {
+        localStorage.setItem('qn_notes', JSON.stringify(notes.filter(n => !selectedNoteIds.has(n.id))));
+      } catch (e) { console.error('Failed to save notes to localStorage', e); }
     } else {
       // Offline: mark for deletion
       const now = Date.now();
@@ -1257,8 +1288,9 @@ const App: React.FC = () => {
       localStorage.setItem('qn_notes', JSON.stringify(notes.map(n => selectedNoteIds.has(n.id) ? { ...n, deletedAt: now } : n)));
     }
 
-    showToast(`${selectedNoteIds.size} note${selectedNoteIds.size > 1 ? 's' : ''} deleted.`);
+    showSweetAlert.success(`${noteCount} note${noteCount > 1 ? 's' : ''} deleted successfully.`);
     setSelectedNoteIds(new Set());
+    setSyncStatus('idle');
   };
 
   const handleAddCategory = async (name: string, category_type: CategoryType = 'text') => {
@@ -1684,6 +1716,11 @@ const App: React.FC = () => {
     });
   }, [notes, currentCategory, filterMode, customDate]);
 
+  const handleSelectAllNotes = useCallback(() => {
+    const allNoteIds = new Set(filteredNotes.map(note => note.id));
+    setSelectedNoteIds(allNoteIds);
+  }, [filteredNotes]);
+
   const activeCategoryName = currentCategory === 'all' 
     ? (categories.find(c => c.id === 'general')?.name || 'General')
     : categories.find(c => c.id === currentCategory)?.name;
@@ -1752,7 +1789,9 @@ const App: React.FC = () => {
                 isOnline={isOnline}
                 isSelected={selectedNoteIds.has(note.id)}
                 onToggleSelect={handleToggleNoteSelection}
-                isSelectionActive={selectedNoteIds.size > 0}
+                isSelectionActive={isSelectionMode}
+                onLongPress={handleLongPress}
+                onPress={handleNotePress}
               />
             ))}
           </div>
@@ -1796,7 +1835,6 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
       {!user && showOnboarding && (
         <OnboardingModal isOpen={showOnboarding} onClose={() => setShowOnboarding(false)} />
       )}
@@ -2031,11 +2069,31 @@ const App: React.FC = () => {
 
               {selectedNoteIds.size > 0 && (
                 <div className="fixed bottom-0 left-1/2 -translate-x-1/2 mb-4 z-40 w-full max-w-md mx-auto px-4">
-                  <div className="bg-primary dark:bg-gray-700 text-textOnPrimary dark:text-white rounded-xl shadow-2xl p-3 flex items-center justify-between animate-fade-in">
-                    <span className="font-bold text-sm">{selectedNoteIds.size} note{selectedNoteIds.size > 1 ? 's' : ''} selected</span>
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => setSelectedNoteIds(new Set())} className="px-3 py-1.5 text-xs font-semibold rounded-md bg-black/10 hover:bg-black/20 transition">Cancel</button>
-                      <button onClick={handleDeleteSelectedNotes} className="px-3 py-1.5 text-xs font-semibold rounded-md bg-red-500 hover:bg-red-600 text-white transition">Delete</button>
+                  <div className="bg-primary dark:bg-gray-700 text-textOnPrimary dark:text-white rounded-xl shadow-2xl p-3 animate-fade-in">
+                    <div className="flex items-center justify-between w-full">
+                      <span className="font-bold text-sm">{selectedNoteIds.size} note{selectedNoteIds.size > 1 ? 's' : ''} selected</span>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={handleSelectAllNotes} 
+                          className="px-3 py-1.5 text-xs font-semibold rounded-md bg-black/10 hover:bg-black/20 transition"
+                          disabled={selectedNoteIds.size === filteredNotes.length}
+                        >
+                          {selectedNoteIds.size === filteredNotes.length ? 'Deselect All' : 'Select All'}
+                        </button>
+                        <button 
+                          onClick={handleClearSelection} 
+                          className="px-3 py-1.5 text-xs font-semibold rounded-md bg-black/10 hover:bg-black/20 transition"
+                        >
+                          Clear
+                        </button>
+                        <button 
+                          onClick={handleDeleteSelectedNotes} 
+                          className="px-3 py-1.5 text-xs font-semibold rounded-md bg-red-500 hover:bg-red-600 text-white transition"
+                          disabled={syncStatus === 'syncing'}
+                        >
+                          {syncStatus === 'syncing' ? 'Deleting...' : `Delete ${selectedNoteIds.size}`}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2134,6 +2192,45 @@ const App: React.FC = () => {
                     />
                  </div>
               </div>
+
+              {isSelectionMode && (
+                <div className="sticky top-20 z-30 bg-surface dark:bg-gray-800 border-b border-borderLight dark:border-gray-700 p-3 animate-slide-down">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={handleClearSelection}
+                        className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                      <span className="font-semibold text-textMain dark:text-white">
+                        {selectedNoteIds.size} note{selectedNoteIds.size > 1 ? 's' : ''} selected
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={handleSelectAllNotes}
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg border border-borderLight dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        disabled={selectedNoteIds.size === filteredNotes.length}
+                      >
+                        {selectedNoteIds.size === filteredNotes.length ? 'Deselect All' : 'Select All'}
+                      </button>
+                      <button 
+                        onClick={handleDeleteSelectedNotes}
+                        className="px-3 py-1.5 text-sm font-medium rounded-lg bg-red-500 hover:bg-red-600 text-white transition-colors flex items-center gap-1"
+                        disabled={syncStatus === 'syncing'}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div id="notes-list-container" className="animate-fade-in pb-10">
                 {renderNotes()}
