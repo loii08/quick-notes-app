@@ -241,6 +241,13 @@ const App: React.FC = () => {
     } catch (e) { return []; }
   });
 
+  const [profileImageError, setProfileImageError] = useState(false);
+
+  // Reset profile image error when user changes
+  useEffect(() => {
+    setProfileImageError(false);
+  }, [user]);
+
   const handleUnitsChange = (newUnits: UnitOfMeasure[]) => {
     setUnits(newUnits);
     if (typeof window !== 'undefined') {
@@ -1177,30 +1184,33 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSaveSettings = async (settings: any) => {
+  const handleSaveSettings = async (event?: React.MouseEvent) => {
     try {
-      // Save to localStorage
-      const updatedSettings = { ...appTheme, ...settings };
+      // Prevent default if event is provided
+      event?.preventDefault();
+      
+      // Get the actual theme configuration object
+      const updatedSettings = THEMES[appTheme] || THEMES.default;
       saveAppSettings(updatedSettings);
-      setAppTheme(updatedSettings);
+      setAppTheme(appTheme);
       
       // Save to Firestore if user is logged in
       if (user && db) {
         await setDoc(doc(db, `users/${user.uid}/settings/general`), {
           appName,
           appSubtitle,
-          appTheme: updatedSettings,
+          appTheme: appTheme, // Save the theme key, not the object
           darkMode
         }, { merge: true });
       }
       
       // Apply theme changes
-      if (settings.primary || settings.primaryDark || settings.textOnPrimary || settings.bgPage) {
+      if (updatedSettings.primary || updatedSettings.primaryDark || updatedSettings.textOnPrimary || updatedSettings.bgPage) {
         const root = document.documentElement;
-        root.style.setProperty('--color-primary', settings.primary || updatedSettings.primary);
-        root.style.setProperty('--color-primary-dark', settings.primaryDark || updatedSettings.primaryDark);
-        root.style.setProperty('--color-text-on-primary', settings.textOnPrimary || updatedSettings.textOnPrimary);
-        root.style.setProperty('--color-bg-page', settings.bgPage || updatedSettings.bgPage);
+        root.style.setProperty('--color-primary', updatedSettings.primary);
+        root.style.setProperty('--color-primary-dark', updatedSettings.primaryDark);
+        root.style.setProperty('--color-text-on-primary', updatedSettings.textOnPrimary);
+        root.style.setProperty('--color-bg-page', updatedSettings.bgPage);
       }
       
       showToast('Settings saved successfully', 'success');
@@ -1795,8 +1805,27 @@ const App: React.FC = () => {
               {user ? (
                 <>
                   <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="relative p-0 text-textOnPrimary dark:text-white rounded-full transition-colors flex items-center gap-2 group">
-                    {user.photoURL ? (
-                      <img src={user.photoURL} alt="Profile" className="w-10 h-10 rounded-full border-2 border-white/50 group-hover:opacity-90 transition-opacity" />
+                    {user.photoURL && !profileImageError ? (
+                      <img 
+                        src={user.photoURL.replace('=s96-c', '=s100-c')} // Use larger size and different format
+                        alt="Profile" 
+                        className="w-10 h-10 rounded-full border-2 border-white/50 group-hover:opacity-90 transition-opacity object-cover"
+                        onError={(e) => {
+                            // Try alternative approach - add crossorigin and referrer policy
+                            const img = e.target as HTMLImageElement;
+                            img.crossOrigin = 'anonymous';
+                            img.referrerPolicy = 'no-referrer';
+                            
+                            // If still fails, try with different URL format
+                            if (!img.src.includes('=s100-c')) {
+                              img.src = user.photoURL.replace('=s96-c', '=s100-c');
+                            } else {
+                              setProfileImageError(true);
+                            }
+                          }}
+                          crossOrigin="anonymous"
+                          referrerPolicy="no-referrer"
+                        />
                     ) : (
                       <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center border-2 border-white/50 font-bold text-sm group-hover:opacity-90 transition-opacity" style={{ backgroundColor: getCategoryColor(user.uid) }}>
                         {getUserInitials(user) === '?' ? <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg> : getUserInitials(user)}
