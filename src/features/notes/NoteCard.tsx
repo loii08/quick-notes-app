@@ -158,17 +158,21 @@ const NoteCard: React.FC<NoteCardProps> = ({
     }
   }, []);
 
-  const handleSave = () => {
+  const handleSave = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     if (!editContent.trim()) return;
     ignoreSaveRef.current = true;
     const newTimestamp = new Date(editDate).getTime();
     onUpdate(note.id, editContent, editCategoryId, newTimestamp, false);
-    onDeactivate();
+    // Add small delay to ensure proper deactivation
+    setTimeout(() => onDeactivate(), 0);
   };
 
-  const handleCancel = () => {
+  const handleCancel = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     ignoreSaveRef.current = true;
-    onDeactivate();
+    // Add small delay to ensure proper deactivation
+    setTimeout(() => onDeactivate(), 0);
   };
 
   const handleUndo = () => {

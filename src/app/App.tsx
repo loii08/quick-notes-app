@@ -1026,7 +1026,8 @@ const App: React.FC = () => {
     handleSelectNote(id);
   }, [handleSelectNote]);
 
-  const handleClearSelection = useCallback(() => {
+  const handleClearSelection = useCallback((e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setSelectedNoteIds(new Set());
     setIsSelectionMode(false);
   }, []);
@@ -2068,7 +2069,7 @@ const App: React.FC = () => {
               </div>
 
               {selectedNoteIds.size > 0 && (
-                <div className="fixed bottom-0 left-1/2 -translate-x-1/2 mb-4 z-40 w-full max-w-md mx-auto px-4">
+                <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-40 w-full max-w-md mx-auto px-4">
                   <div className="bg-primary dark:bg-gray-700 text-textOnPrimary dark:text-white rounded-xl shadow-2xl p-3 animate-fade-in">
                     <div className="flex items-center justify-between w-full">
                       <span className="font-bold text-sm">{selectedNoteIds.size} note{selectedNoteIds.size > 1 ? 's' : ''} selected</span>
@@ -2081,7 +2082,7 @@ const App: React.FC = () => {
                           {selectedNoteIds.size === filteredNotes.length ? 'Deselect All' : 'Select All'}
                         </button>
                         <button 
-                          onClick={handleClearSelection} 
+                          onClick={(e) => handleClearSelection(e)}
                           className="px-3 py-1.5 text-xs font-semibold rounded-md bg-black/10 hover:bg-black/20 transition"
                         >
                           Clear
@@ -2198,7 +2199,7 @@ const App: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <button 
-                        onClick={handleClearSelection}
+                        onClick={(e) => handleClearSelection(e)}
                         className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
