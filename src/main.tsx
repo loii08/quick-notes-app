@@ -12,12 +12,15 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
+
 root.render(
   <React.StrictMode>
     <ErrorBoundary>
       <InstallPWAProvider>
         <BrowserRouter>
-          <AppRoutes />
+          <React.Suspense fallback={<div>Loading...</div>}>
+            <AppRoutes />
+          </React.Suspense>
         </BrowserRouter>
       </InstallPWAProvider>
     </ErrorBoundary>

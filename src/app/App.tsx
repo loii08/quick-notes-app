@@ -11,11 +11,11 @@ import SkeletonLoader from '@shared/components/SkeletonLoader';
 import LandingPage from '@shared/components/LandingPage';
 import LoginModal from '@shared/components/LoginModal';
 import AppLoader from '@shared/components/AppLoader';
-import AdminAnalytics from '@features/admin/AdminAnalytics';
+import AdminAnalytics from '@features/admin/UserAnalytics';
 import UserAnalytics from '@features/admin/UserAnalytics';
 import AdminSettings from '@features/admin/AdminSettings';
 import AdminRoute from '@features/admin/AdminRoute';
-import { useAuthStatus } from '@features/auth/useAuthStatus';
+import { AuthProvider, useAuth } from '@contexts/AuthContext';
 import AdminDashboard from '@features/admin/AdminDashboard';
 import UserList from '@features/admin/UserList';
 import NotAuthorized from '@features/admin/NotAuthorized';
@@ -23,6 +23,7 @@ import SetPasswordModal from '@features/auth/SetPasswordModal';
 import UnitsManager from '@features/admin/UnitsManager';
 import { useData } from '../hooks/useData';
 import { useNavigation } from '../hooks/useNavigation';
+import { useAuthStatus } from '../features/auth/useAuthStatus';
 
 import { auth, db, googleProvider } from '@shared/firebase';
 import { TIMINGS, TIME, DEFAULTS, DEFAULT_CATEGORIES, DEFAULT_QUICK_ACTIONS, STORAGE_KEYS } from '@shared/constants';
@@ -37,10 +38,12 @@ import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
   updatePassword,
+  updateProfile,
   onAuthStateChanged,
   setPersistence,
   browserLocalPersistence,
-  browserSessionPersistence
+  browserSessionPersistence,
+  User
 } from 'firebase/auth';
 import { 
   collection, 
@@ -978,6 +981,14 @@ const App: React.FC = () => {
       console.error("handleUpdateNote called with undefined id");
       return;
     }
+    
+    // iOS-specific authentication check
+    if (!user || !user.uid) {
+      console.error("User not authenticated - cannot update note");
+      if (!silent) showToast('Authentication required', 'error');
+      return;
+    }
+    
     const updatedTimestamp = timestamp || Date.now();
 
     // Optimistic UI update
@@ -993,14 +1004,45 @@ const App: React.FC = () => {
     if (user && db && isOnline) {
       (async () => {
         try {
+          console.log(`Updating note ${id} for user ${user.uid}`);
           await setDoc(doc(db, `users/${user.uid}/notes`, id), { content, categoryId, timestamp: updatedTimestamp }, { merge: true });
           // Update user's last activity timestamp
           await setDoc(doc(db, `users/${user.uid}`), { 
             lastUpdate: new Date().toISOString() 
           }, { merge: true });
+          
+          // Mark as synced after successful save
+          setNotes(prev => {
+            const syncedNotes = prev.map(n => n.id === id ? { ...n, synced: true } : n);
+            try {
+              localStorage.setItem('qn_notes', JSON.stringify(syncedNotes));
+            } catch (e) { console.error('Failed to save synced notes to localStorage', e); }
+            return syncedNotes;
+          });
+          
+          if (!silent) showToast('Note updated successfully', 'success');
+          console.log(`Note ${id} updated successfully`);
         } catch (e) {
           console.error("Failed to sync note update to cloud", e);
-          if (!silent) showToast('Update failed to sync', 'error');
+          console.error("Error details:", e.code, e.message);
+          
+          // Revert optimistic update on error
+          setNotes(prev => {
+            const revertedNotes = prev.map(n => n.id === id ? { ...n, synced: false } : n);
+            try {
+              localStorage.setItem('qn_notes', JSON.stringify(revertedNotes));
+            } catch (e) { console.error('Failed to save reverted notes to localStorage', e); }
+            return revertedNotes;
+          });
+          
+          if (!silent) {
+            // iOS-specific error handling
+            if (typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
+              showToast('Update failed - saved locally', 'info');
+            } else {
+              showToast('Failed to update note', 'error');
+            }
+          }
         }
       })();
     } else {
@@ -1127,6 +1169,16 @@ const App: React.FC = () => {
   const handleDeleteNote = useCallback(async () => {
     if (!confirmDeleteNoteId) return;
     
+    // iOS-specific authentication check
+    if (!user || !user.uid) {
+      console.error("User not authenticated - cannot delete note");
+      showToast('Authentication required', 'error');
+      setConfirmDeleteNoteId(null);
+      return;
+    }
+    
+    console.log(`Deleting note ${confirmDeleteNoteId} for user ${user?.uid}`);
+    
     if (isOnline && user && db) {
       setSyncStatus('syncing');
       try {
@@ -1135,6 +1187,8 @@ const App: React.FC = () => {
         await setDoc(doc(db, `users/${user.uid}`), { 
           lastUpdate: new Date().toISOString() 
         }, { merge: true });
+        
+        // Update local state
         setNotes(prev => {
           const updatedNotes = prev.filter(n => n.id !== confirmDeleteNoteId);
           try {
@@ -1142,9 +1196,12 @@ const App: React.FC = () => {
           } catch (e) { console.error('Failed to save notes to localStorage', e); }
           return updatedNotes;
         });
+        
         showToast('Note deleted successfully', 'success');
+        console.log(`Note ${confirmDeleteNoteId} deleted successfully`);
       } catch (e) {
         console.error("Failed to delete note from cloud", e);
+        console.error("Error details:", e.code, e.message);
         showToast('Failed to delete note', 'error');
       } finally {
         setSyncStatus('idle');
@@ -1165,14 +1222,28 @@ const App: React.FC = () => {
     setConfirmDeleteNoteId(null);
   }, [user, db, isOnline, confirmDeleteNoteId]);
 
-  const toggleDarkMode = () => {
-    setDarkMode(prev => !prev);
-    const newMode = !darkMode ? 'dark' : 'light';
+  const toggleDarkMode = async () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    const newMode = newDarkMode ? 'dark' : 'light';
     localStorage.theme = newMode;
+    
     if (newMode === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
+    }
+    
+    // Save to Firestore if user is logged in
+    if (user && db) {
+      try {
+        await setDoc(doc(db, `users/${user.uid}/settings/general`), {
+          darkMode: newDarkMode,
+          lastUpdated: Date.now()
+        }, { merge: true });
+      } catch (error) {
+        console.error('Failed to sync dark mode to database:', error);
+      }
     }
   };
 
@@ -1254,10 +1325,19 @@ const App: React.FC = () => {
   const handleDeleteSelectedNotes = async () => {
     if (selectedNoteIds.size === 0) return;
 
+    // iOS-specific authentication check
+    if (!user || !user.uid) {
+      console.error("User not authenticated - cannot delete notes");
+      showSweetAlert.error('Authentication required');
+      return;
+    }
+
     const noteCount = selectedNoteIds.size;
     const message = noteCount === 1 
       ? 'Are you sure you want to delete this note?'
       : `Are you sure you want to delete ${noteCount} selected notes?`;
+
+    console.log(`Bulk deleting ${noteCount} notes for user ${user?.uid}:`, Array.from(selectedNoteIds));
 
     // Show SweetAlert2 confirmation
     const result = await showSweetAlert.delete(message, {
@@ -1271,27 +1351,51 @@ const App: React.FC = () => {
 
     if (isOnline && user && db) {
       setSyncStatus('syncing');
-      const batch = writeBatch(db);
-      selectedNoteIds.forEach(id => {
-        batch.delete(doc(db, `users/${user.uid}/notes`, id));
-      });
-      await batch.commit();
-      
-      // Update local state
-      setNotes(prev => prev.filter(n => !selectedNoteIds.has(n.id)));
       try {
-        localStorage.setItem('qn_notes', JSON.stringify(notes.filter(n => !selectedNoteIds.has(n.id))));
-      } catch (e) { console.error('Failed to save notes to localStorage', e); }
+        const batch = writeBatch(db);
+        selectedNoteIds.forEach(id => {
+          batch.delete(doc(db, `users/${user.uid}/notes`, id));
+        });
+        await batch.commit();
+        
+        // Update user's last activity timestamp
+        await setDoc(doc(db, `users/${user.uid}`), { 
+          lastUpdate: new Date().toISOString() 
+        }, { merge: true });
+        
+        // Update local state
+        setNotes(prev => {
+          const updatedNotes = prev.filter(n => !selectedNoteIds.has(n.id));
+          try {
+            localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
+          } catch (e) { console.error('Failed to save notes to localStorage', e); }
+          return updatedNotes;
+        });
+        
+        showSweetAlert.success(`${noteCount} note${noteCount > 1 ? 's' : ''} deleted successfully.`);
+        console.log(`Bulk delete successful: ${noteCount} notes deleted`);
+      } catch (e) {
+        console.error("Failed to bulk delete notes from cloud", e);
+        console.error("Error details:", e.code, e.message);
+        showSweetAlert.error('Failed to delete notes');
+      } finally {
+        setSyncStatus('idle');
+      }
     } else {
       // Offline: mark for deletion
       const now = Date.now();
-      setNotes(prev => prev.map(n => selectedNoteIds.has(n.id) ? { ...n, deletedAt: now } : n));
-      localStorage.setItem('qn_notes', JSON.stringify(notes.map(n => selectedNoteIds.has(n.id) ? { ...n, deletedAt: now } : n)));
+      setNotes(prev => {
+        const updatedNotes = prev.map(n => selectedNoteIds.has(n.id) ? { ...n, deletedAt: now } : n);
+        try {
+          localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
+        } catch (e) { console.error('Failed to save notes to localStorage', e); }
+        return updatedNotes;
+      });
+      showSweetAlert.info('Notes marked for deletion (will sync when online)');
     }
 
-    showSweetAlert.success(`${noteCount} note${noteCount > 1 ? 's' : ''} deleted successfully.`);
     setSelectedNoteIds(new Set());
-    setSyncStatus('idle');
+    setIsSelectionMode(false);
   };
 
   const handleAddCategory = async (name: string, category_type: CategoryType = 'text') => {
@@ -1978,17 +2082,10 @@ const App: React.FC = () => {
                   )}
                   {user && (
                     <>
-                      {userRole === 'admin' ? (
-                        <Link to="/admin" onClick={() => setIsMenuOpen(false)} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
-                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                          Admin Dashboard
-                        </Link>
-                      ) : (
-                        <Link to="/analytics" onClick={() => setIsMenuOpen(false)} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
-                          <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                          My Analytics
-                        </Link>
-                      )}
+                      <Link to="/analytics" onClick={() => setIsMenuOpen(false)} className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-gray-700 text-textMain dark:text-gray-200 flex items-center gap-2">
+                        <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                        My Analytics
+                      </Link>
                     </>
                   )}
                   <div className="border-t border-borderLight dark:border-gray-700 my-1"></div>
@@ -3009,16 +3106,9 @@ const App: React.FC = () => {
   );
 };
 
-// Analytics page that redirects admins to admin dashboard
+// Analytics page for all users
 const AnalyticsPage: React.FC = () => {
-  const { userRole } = useAuthStatus();
-  
-  // If admin, redirect to admin dashboard
-  if (userRole === 'admin') {
-    return <Navigate to="/admin" replace />;
-  }
-  
-  // Regular users see the user analytics
+  // All users see the user analytics
   return <UserAnalytics />;
 };
 
@@ -3035,12 +3125,12 @@ const AppRoutes: React.FC = () => {
         <Route path="/" element={<App />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/not-authorized" element={<NotAuthorized />} />
-        <Route path="/admin" element={<AdminRoute user={user} userRole={userRole}>
+        <Route path="/admin" element={<AdminRoute user={user} userRole={userRole}/>}>
           <Route index element={<AdminDashboard />} />
           <Route path="users" element={<UserList />} />
           <Route path="analytics" element={<AdminAnalytics />} />
           <Route path="settings" element={<AdminSettings />} />
-        </AdminRoute>} />
+        </Route>
       </Routes>
 
       {/* Maintenance Mode Overlay */}
