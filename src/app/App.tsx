@@ -1053,39 +1053,57 @@ const App: React.FC = () => {
     // Optimistic UI update
     setNotes(prev => {
       const updatedNotes = [newNote, ...prev];
+      // iOS-specific localStorage handling with try-catch and delay
       try {
-        localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
-      } catch (e) { console.error('Failed to save notes to localStorage', e); }
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
+        }
+      } catch (e) { 
+        console.error('Failed to save notes to localStorage (iOS):', e);
+        // iOS fallback: don't fail the operation, just log the error
+      }
       return updatedNotes;
     });
 
-    // Background save
+    // Background save with iOS-specific handling
     if (user && db && isOnline) {
-      (async () => {
-        try {
-          await setDoc(doc(db, `users/${user.uid}/notes`, newNote.id), {
-            content: newNote.content,
-            categoryId: newNote.categoryId,
-            timestamp: newNote.timestamp
-          }, { merge: true });
-          // Update user's last activity timestamp
-          await setDoc(doc(db, `users/${user.uid}`), { 
-            lastUpdate: new Date().toISOString() 
-          }, { merge: true });
-          // Mark as synced after successful save
-          setNotes(prev => {
-            const updatedNotes = prev.map(n => n.id === newNote.id ? { ...n, synced: true } : n);
-            try {
-              localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
-            } catch (e) { console.error('Failed to save notes to localStorage', e); }
-            return updatedNotes;
-          });
-          showToast('Note added successfully', 'success');
-        } catch (e) {
-          console.error("Failed to sync note to cloud", e);
-          showToast('Failed to add note', 'error');
-        }
-      })();
+      // Add small delay for iOS to handle the UI update first
+      setTimeout(() => {
+        (async () => {
+          try {
+            await setDoc(doc(db, `users/${user.uid}/notes`, newNote.id), {
+              content: newNote.content,
+              categoryId: newNote.categoryId,
+              timestamp: newNote.timestamp
+            }, { merge: true });
+            // Update user's last activity timestamp
+            await setDoc(doc(db, `users/${user.uid}`), { 
+              lastUpdate: new Date().toISOString() 
+            }, { merge: true });
+            // Mark as synced after successful save
+            setNotes(prev => {
+              const updatedNotes = prev.map(n => n.id === newNote.id ? { ...n, synced: true } : n);
+              try {
+                if (typeof window !== 'undefined' && window.localStorage) {
+                  localStorage.setItem('qn_notes', JSON.stringify(updatedNotes));
+                }
+              } catch (e) { 
+                console.error('Failed to save synced notes to localStorage (iOS):', e);
+              }
+              return updatedNotes;
+            });
+            showToast('Note added successfully', 'success');
+          } catch (e) {
+            console.error("Failed to sync note to cloud (iOS):", e);
+            // Don't show error to user on iOS if note was saved locally
+            if (typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent)) {
+              showToast('Note saved locally', 'info');
+            } else {
+              showToast('Failed to add note', 'error');
+            }
+          }
+        })();
+      }, 100); // Small delay for iOS
     }
     
     // Clear input
@@ -2100,6 +2118,19 @@ const App: React.FC = () => {
                       value={customDate}
                       onChange={(e) => { setCustomDate(e.target.value); setFilterMode('custom'); }}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      // iOS-specific fixes
+                      pattern="\d{4}-\d{2}-\d{2}"
+                      min="2020-01-01"
+                      max="2030-12-31"
+                      style={{
+                        // iOS Safari specific fixes
+                        WebkitAppearance: 'none',
+                        MozAppearance: 'textfield',
+                        appearance: 'none',
+                        backgroundColor: 'transparent',
+                        border: 'none',
+                        color: 'transparent'
+                      }}
                     />
                  </div>
               </div>

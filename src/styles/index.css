@@ -72,3 +72,50 @@ body { background-color: var(--color-bg-page); color: var(--color-text); min-hei
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background-color: rgba(128, 128, 128, 0.4); border-radius: 10px; border: 2px solid transparent; background-clip: content-box; }
+
+/* iOS-specific fixes */
+@supports (-webkit-touch-callout: none) {
+  /* iOS Safari specific styles */
+  input[type="date"] {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-color: transparent;
+    border: none;
+    color: transparent;
+  }
+  
+  input[type="date"]::-webkit-calendar-picker-indicator {
+    background: transparent;
+    bottom: 0;
+    color: transparent;
+    cursor: pointer;
+    height: auto;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: auto;
+  }
+  
+  input[type="date"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    display: none;
+  }
+  
+  input[type="date"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    display: none;
+  }
+}
+
+/* iOS safe area support */
+@supports (padding: max(0px)) {
+  .safe-area-top {
+    padding-top: max(1.5rem, env(safe-area-inset-top));
+  }
+  
+  .safe-area-bottom {
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+  }
+}
